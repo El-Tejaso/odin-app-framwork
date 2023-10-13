@@ -37,7 +37,7 @@ framebuffer_rect: Rect
 // Render state
 
 white_pixel_texture: ^Texture
-mb_im: ^MeshBuffer // use this mesh buffer to render things in an immediate mode style
+im: ^MeshBuffer // use this mesh buffer to render things in an immediate mode style
 internal_shader: ^Shader
 
 transform, view, projection: Mat4
@@ -46,7 +46,6 @@ draw_color: Color
 current_shader: ^Shader
 current_framebuffer: ^Framebuffer
 current_texture: ^Texture
-
 
 // Input state
 
@@ -72,29 +71,29 @@ mouse_delta: Vec2
 
 // (\w+) (\*?)([\w_]+)
 
-GetTime :: proc() -> f64 {
+get_time :: proc() -> f64 {
 	return glfw.GetTime()
 }
 
-SetTime :: proc(t: f64) {
+set_time :: proc(t: f64) {
 	glfw.SetTime(t)
 
 	glfw.SetCharCallback(nil, internal_glfw_character_callback)
 }
 
-VW :: proc() -> f32 {
+vw :: proc() -> f32 {
 	return layout_rect.width
 }
 
-VH :: proc() -> f32 {
+vh :: proc() -> f32 {
 	return layout_rect.height
 }
 
-SetTargetFPS :: proc(fps: int) {
+set_target_fps :: proc(fps: int) {
 	target_fps = fps
 }
 
-WindowShouldClose :: proc() -> bool {
+window_should_close :: proc() -> bool {
 	return glfw.WindowShouldClose(window) == true
 }
 
@@ -102,7 +101,7 @@ WindowShouldClose :: proc() -> bool {
 internal_glfw_character_callback :: proc "c" (window: glfw.WindowHandle, r: rune) {
 	if (inputted_runes_count >= len(inputted_runes)) {
 		context = runtime.default_context()
-		DebugLog("WARNING - text buffer is full")
+		debug_log("WARNING - text buffer is full")
 		return
 	}
 
@@ -120,7 +119,7 @@ internal_glfw_key_callback :: proc "c" (
 
 	if (keys_just_pressed_count >= len(keys_just_pressed)) {
 		context = runtime.default_context()
-		DebugLog("WARNING - key input buffer is full")
+		debug_log("WARNING - key input buffer is full")
 		return
 	}
 
@@ -144,46 +143,46 @@ internal_on_framebuffer_resize :: proc(width, height: c.int) {
 	framebuffer_rect.width = f32(width)
 	framebuffer_rect.height = f32(height)
 
-	SetLayoutRect(layout_rect, false)
+	set_layout_rect(layout_rect, false)
 	gl.Viewport(0, 0, width, height)
 }
 
 
-internal_SetTextureDirectly :: proc(texture: ^Texture) {
+internal_set_texture_directly :: proc(texture: ^Texture) {
 	texture := texture
 	if (texture == nil) {
 		texture = white_pixel_texture
 	}
 
-	Texture_SetTextureUnit(gl.TEXTURE0)
-	Texture_Use(texture)
+	internal_set_texture_unit(gl.TEXTURE0)
+	use_texture(texture)
 	current_texture = texture
 }
 
-SetTexture :: proc(texture: ^Texture) {
+set_texture :: proc(texture: ^Texture) {
 	if (texture == current_texture) {
 		return
 	}
 
-	Flush()
-	internal_SetTextureDirectly(texture)
+	flush()
+	internal_set_texture_directly(texture)
 }
 
-GetTexture :: proc() -> ^Texture {
+get_texture :: proc() -> ^Texture {
 	return current_texture
 }
 
-ClearScreen :: proc(col: Color) {
+clear_screen :: proc(col: Color) {
 	gl.StencilMask(1)
 	gl.ClearColor(col.r, col.g, col.b, col.a)
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 }
 
-Flush :: proc() {
-	MeshBuffer_Flush(mb_im)
+flush :: proc() {
+	flush_mesh_buffer(im)
 }
 
-SetLayoutRect :: proc(rect: Rect, clip: bool) {
+set_layout_rect :: proc(rect: Rect, clip: bool) {
 	layout_rect = rect
 
 	if (clip) {
@@ -199,14 +198,14 @@ SetLayoutRect :: proc(rect: Rect, clip: bool) {
 		gl.Disable(gl.SCISSOR_TEST)
 	}
 
-	SetViewProjection_Cartesian2D(rect.x0, rect.y0, 1, 1)
+	camera_cartesian2D(rect.x0, rect.y0, 1, 1)
 }
 
-Init :: proc(width: int, height: int, title: string) -> bool {
-	DebugLog("Initializing window '%s' ... ", title)
+init :: proc(width: int, height: int, title: string) -> bool {
+	debug_log("Initializing window '%s' ... ", title)
 	{
 		if (!bool(glfw.Init())) {
-			DebugLog("glfw failed to initialize")
+			debug_log("glfw failed to initialize")
 			return false
 		}
 
@@ -214,7 +213,7 @@ Init :: proc(width: int, height: int, title: string) -> bool {
 		defer delete(current_title)
 		window = glfw.CreateWindow(c.int(width), c.int(height), current_title, nil, nil)
 		if (window == nil) {
-			DebugLog("glfw failed to create a window")
+			debug_log("glfw failed to create a window")
 			glfw.Terminate()
 			return false
 		}
@@ -227,17 +226,17 @@ Init :: proc(width: int, height: int, title: string) -> bool {
 		glfw.SetCharCallback(window, internal_glfw_character_callback)
 		glfw.SetFramebufferSizeCallback(window, internal_glfw_framebuffer_size_callback)
 
-		DebugLog("GLFW initialized\n")
+		debug_log("GLFW initialized\n")
 	}
 
 
-	DebugLog("Initializing Rendering ... ")
+	debug_log("Initializing Rendering ... ")
 	{
 		gl.load_up_to(GL_MAJOR_VERSION, GL_MINOR_VERSION, glfw.gl_set_proc_address)
 
-		mb_im = MeshBuffer_Make(2000, 6000)
-		internal_shader = Shader_MakeDefaultShader()
-		SetCurrentShader(internal_shader)
+		im = new_mesh_buffer(2000, 6000)
+		internal_shader = new_shader_default()
+		set_shader(internal_shader)
 
 		gl.Enable(gl.BLEND)
 		gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
@@ -247,7 +246,7 @@ Init :: proc(width: int, height: int, title: string) -> bool {
 
 		gl.Enable(gl.DEPTH_TEST)
 
-		SetBackfaceCulling(false)
+		set_backface_culling(false)
 
 		// init blank texture
 		{
@@ -258,53 +257,53 @@ Init :: proc(width: int, height: int, title: string) -> bool {
 
 			data := make([]byte, 4)
 			defer delete(data)
-
 			data[0] = 0xFF
 			data[1] = 0xFF
 			data[2] = 0xFF
 			data[3] = 0xFF
-
 			img.data = raw_data(data)
-			white_pixel_texture = Texture_FromImage(&img)
 
-			white_pixel_texture.filtering = gl.NEAREST
-			Texture_ApplySettings(white_pixel_texture)
+			config := DEFAULT_TEXTURE_CONFIG
+			config.filtering = gl.NEAREST
+			white_pixel_texture = new_texture_image(&img, config)
 		}
 
-		DebugLog(
+		debug_log(
 			"OpenGL initialized. OpenGL info: %s, Version: %s",
 			gl.GetString(gl.VENDOR),
 			gl.GetString(gl.VERSION),
 		)
 	}
 
-	// Text_Init()
+	// text_init()
 	return true
 }
 
-BeginFrame :: proc() {
-	internal_UpdateKeyInputsBeforePoll()
+begin_frame :: proc() {
+	internal_update_key_inputs_before_poll()
 	glfw.PollEvents()
-	internal_UpdateMouseInput()
-	internal_UpdateKeyInput()
+	internal_update_mouse_input()
+	internal_update_key_input()
 
 	w, h := glfw.GetWindowSize(window)
 	window_rect.width = f32(w)
 	window_rect.height = f32(h)
 
-	SetTransform(linalg.MATRIX4F32_IDENTITY)
-	internal_SetTextureDirectly(nil)
-	internal_UseFramebufferDirectly(nil)
+	set_transform(linalg.MATRIX4F32_IDENTITY)
+	internal_set_texture_directly(nil)
+	internal_set_framebuffer_directly(nil)
 
-	SetLayoutRect(window_rect, false)
+	set_layout_rect(window_rect, false)
+
+	reset_mesh_stats()
 }
 
-EndFrame :: proc() {
-	Flush()
-	UseFramebuffer(nil)
+end_frame :: proc() {
+	flush()
+	use_framebuffer(nil)
 	glfw.SwapBuffers(window)
 
-	frame_end := GetTime()
+	frame_end := get_time()
 	delta_time = frame_end - last_frame_time
 
 	if (target_fps == 0) {
@@ -321,27 +320,27 @@ EndFrame :: proc() {
 		nanoseconds := i64(time_to_next_frame * 1000000000)
 		time.sleep(time.Duration(nanoseconds))
 
-		frame_end = GetTime()
+		frame_end = get_time()
 		delta_time = frame_end - last_frame_time
 	}
 
 	last_frame_time = frame_end
 }
 
-UnInit :: proc() {
-	DebugLog("UnInitializing...")
+un_init :: proc() {
+	debug_log("UnInitializing...")
 
 	// free rendering resources
-	Shader_Free(internal_shader)
-	MeshBuffer_Free(mb_im)
-	Texture_Free(white_pixel_texture)
+	free_shader(internal_shader)
+	free_mesh_buffer(im)
+	free_texture(white_pixel_texture)
 
 	glfw.Terminate()
 
-	DebugLog("Done")
+	debug_log("Done")
 }
 
-SetViewProjection_Cartesian2D :: proc(x, y, sx, sy: f32) {
+camera_cartesian2D :: proc(x, y, sx, sy: f32) {
 	width := sx * framebuffer_rect.width
 	height := sy * framebuffer_rect.height
 
@@ -351,17 +350,17 @@ SetViewProjection_Cartesian2D :: proc(x, y, sx, sy: f32) {
 	scale := Vec3{2 / width, 2 / height, 1}
 	projection := linalg.matrix4_scale(scale)
 
-	SetView(view)
-	SetProjection(projection)
+	set_view(view)
+	set_projection(projection)
 
-    gl.DepthFunc(gl.LEQUAL);
+	gl.DepthFunc(gl.LEQUAL)
 }
 
-GetLookAtMat4 :: proc(position: Vec3, target: Vec3, up: Vec3) -> Mat4 {
+get_look_at_mat4 :: proc(position: Vec3, target: Vec3, up: Vec3) -> Mat4 {
 	return linalg.matrix4_look_at_f32(position, target, up)
 }
 
-GetOrientationMat4 :: proc(position: Vec3, rotation: Quat) -> Mat4 {
+get_orientation_mat4 :: proc(position: Vec3, rotation: Quat) -> Mat4 {
 	view := linalg.mul(
 		linalg.matrix4_from_quaternion(rotation),
 		linalg.matrix4_translate(position),
@@ -369,15 +368,17 @@ GetOrientationMat4 :: proc(position: Vec3, rotation: Quat) -> Mat4 {
 	return view
 }
 
-GetPerspectiveMat4 :: proc(fovy, aspect, depth_near, depth_far, center_x, center_y: f32) -> Mat4 {
+get_perspective_mat4 :: proc(
+	fovy, aspect, depth_near, depth_far, center_x, center_y: f32,
+) -> Mat4 {
 	projection := linalg.matrix4_perspective_f32(fovy, aspect, depth_near, depth_far)
-	screenCenter := linalg.matrix4_translate_f32(Vec3{center_x / VW(), center_y / VH(), 0})
+	screenCenter := linalg.matrix4_translate_f32(Vec3{center_x / vw(), center_y / vh(), 0})
 	scale := linalg.matrix4_scale_f32(Vec3{-1, 1, 1})
 
 	return linalg.mul(linalg.mul(projection, screenCenter), scale)
 }
 
-GetOrthographicMat4 :: proc(
+get_orthographic_mat4 :: proc(
 	width, height, depth_near, depth_far, center_x, center_y: f32,
 ) -> Mat4 {
 	projection := linalg.matrix_ortho3d_f32(
@@ -388,43 +389,43 @@ GetOrthographicMat4 :: proc(
 		depth_near,
 		depth_far,
 	)
-	screenCenter := linalg.matrix4_translate_f32(Vec3{center_x / VW(), center_y / VH(), 0})
+	screenCenter := linalg.matrix4_translate_f32(Vec3{center_x / vw(), center_y / vh(), 0})
 	scale := linalg.matrix4_scale_f32(Vec3{-1, 1, 1})
 
 	return linalg.mul(linalg.mul(projection, screenCenter), scale)
 }
 
 
-SetProjection :: proc(mat: Mat4) {
-	Flush()
+set_projection :: proc(mat: Mat4) {
+	flush()
 
 	projection = mat
-	Shader_SetMatrix4(current_shader.projection_loc, &projection)
+	set_shader_mat4(current_shader.projection_loc, &projection)
 }
 
-SetTransform :: proc(mat: Mat4) {
-	Flush()
+set_transform :: proc(mat: Mat4) {
+	flush()
 
 	transform = mat
-	Shader_SetMatrix4(current_shader.transform_loc, &transform)
+	set_shader_mat4(current_shader.transform_loc, &transform)
 }
 
-SetView :: proc(mat: Mat4) {
-	Flush()
+set_view :: proc(mat: Mat4) {
+	flush()
 
 	view = mat
-	Shader_SetMatrix4(current_shader.view_loc, &view)
+	set_shader_mat4(current_shader.view_loc, &view)
 }
 
-SetDrawColor :: proc(color: Color) {
-	Flush()
+set_draw_color :: proc(color: Color) {
+	flush()
 
 	draw_color = color
-	Shader_SetVector4(current_shader.color_loc, draw_color)
+	set_shader_vec4(current_shader.color_loc, draw_color)
 }
 
-SetBackfaceCulling :: proc(state: bool) {
-	Flush()
+set_backface_culling :: proc(state: bool) {
+	flush()
 
 	if (state) {
 		gl.Enable(gl.CULL_FACE)
@@ -433,23 +434,23 @@ SetBackfaceCulling :: proc(state: bool) {
 	}
 }
 
-SetCurrentShader :: proc(shader: ^Shader) {
+set_shader :: proc(shader: ^Shader) {
 	shader := shader
 	if (shader == nil) {
 		shader = internal_shader
 	}
 
-	Flush()
+	flush()
 
 	current_shader = shader
-	internal_Shader_Use(current_shader)
-	Shader_SetMatrix4(current_shader.transform_loc, &transform)
-	Shader_SetMatrix4(current_shader.view_loc, &view)
-	Shader_SetMatrix4(current_shader.projection_loc, &projection)
+	internal_shader_use(current_shader)
+	set_shader_mat4(current_shader.transform_loc, &transform)
+	set_shader_mat4(current_shader.view_loc, &view)
+	set_shader_mat4(current_shader.projection_loc, &projection)
 }
 
-StencilBegin :: proc(can_draw: bool, inverse_stencil: bool) {
-	Flush()
+stencil_begin :: proc(can_draw: bool, inverse_stencil: bool) {
+	flush()
 
 	if (!can_draw) {
 		gl.ColorMask(false, false, false, false)
@@ -474,28 +475,27 @@ StencilBegin :: proc(can_draw: bool, inverse_stencil: bool) {
 	}
 }
 
-StencilUse :: proc() {
-	Flush()
+stencil_use :: proc() {
+	flush()
 
 	gl.ColorMask(true, true, true, true)
 	gl.StencilFunc(gl.NOTEQUAL, 1, 1)
 	gl.StencilMask(0)
 }
 
-StencilEnd :: proc() {
-	Flush()
+stencil_end :: proc() {
+	flush()
 
 	gl.Disable(gl.STENCIL_TEST)
 }
 
-internal_UseFramebufferDirectly :: proc(framebuffer: ^Framebuffer) {
+internal_set_framebuffer_directly :: proc(framebuffer: ^Framebuffer) {
 	current_framebuffer = framebuffer
 
+	use_framebuffer(framebuffer)
 	if (framebuffer == nil) {
-		Framebuffer_StopUsing()
 		internal_on_framebuffer_resize(c.int(window_rect.width), c.int(window_rect.height))
 	} else {
-		Framebuffer_Use(framebuffer)
 		internal_on_framebuffer_resize(
 			c.int(framebuffer.texture.width),
 			c.int(framebuffer.texture.height),
@@ -504,37 +504,37 @@ internal_UseFramebufferDirectly :: proc(framebuffer: ^Framebuffer) {
 }
 
 
-UseFramebuffer :: proc(framebuffer: ^Framebuffer) {
+set_framebuffer :: proc(framebuffer: ^Framebuffer) {
 	if (current_framebuffer == framebuffer) {
 		return
 	}
 
-	Flush()
+	flush()
 
-	internal_UseFramebufferDirectly(framebuffer)
+	internal_set_framebuffer_directly(framebuffer)
 }
 
 
-GetVertex2D :: proc(x, y: f32) -> Vertex {
+get_vertex_2d :: proc(x, y: f32) -> Vertex {
 	return Vertex{position = {x, y, 0}, uv = {x, y}}
 }
 
-GetVertex2DUV :: proc(x, y: f32, u, v: f32) -> Vertex {
+get_vertex_2d_uv :: proc(x, y: f32, u, v: f32) -> Vertex {
 	return Vertex{position = {x, y, 0}, uv = {u, v}}
 }
 
-DrawTriangle :: proc(output: ^MeshBuffer, v1, v2, v3: Vertex) {
-	MeshBuffer_FlushIfNotEnoughSpace(output, 3, 3)
+draw_triangle :: proc(output: ^MeshBuffer, v1, v2, v3: Vertex) {
+	flush_mesh_buffer_if_not_enough_space(output, 3, 3)
 
-	v1_index := MeshBuffer_AddVertex(output, v1)
-	v2_index := MeshBuffer_AddVertex(output, v2)
-	v3_index := MeshBuffer_AddVertex(output, v3)
+	v1_index := add_vertex_mesh_buffer(output, v1)
+	v2_index := add_vertex_mesh_buffer(output, v2)
+	v3_index := add_vertex_mesh_buffer(output, v3)
 
-	MeshBuffer_AddTriangle(output, v1_index, v2_index, v3_index)
+	add_mesh_buffer_triangle(output, v1_index, v2_index, v3_index)
 }
 
 
-DrawTriangleOutline :: proc(output: ^MeshBuffer, v1, v2, v3: Vertex, thickness: f32) {
+draw_triangle_outline :: proc(output: ^MeshBuffer, v1, v2, v3: Vertex, thickness: f32) {
 	mean := (v1.position + v2.position + v3.position) / 3.0
 
 	v1_outer := v1
@@ -547,26 +547,26 @@ DrawTriangleOutline :: proc(output: ^MeshBuffer, v1, v2, v3: Vertex, thickness: 
 	v3_outer := v3
 	v3_outer.position = v3.position + (linalg.vector_normalize(v3.position - mean) * thickness)
 
-	nline := NLineStrip_Begin(output)
-	NLineStrip_Extend(&nline, v1, v1_outer)
-	NLineStrip_Extend(&nline, v2, v2_outer)
-	NLineStrip_Extend(&nline, v3, v3_outer)
-	NLineStrip_Extend(&nline, v1, v1_outer)
+	nline := begin_nline_strip(output)
+	extend_nline_strip(&nline, v1, v1_outer)
+	extend_nline_strip(&nline, v2, v2_outer)
+	extend_nline_strip(&nline, v3, v3_outer)
+	extend_nline_strip(&nline, v1, v1_outer)
 }
 
 
-DrawQuad :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex) {
-	MeshBuffer_FlushIfNotEnoughSpace(output, 4, 6)
+draw_quad :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex) {
+	flush_mesh_buffer_if_not_enough_space(output, 4, 6)
 
-	v1_index := MeshBuffer_AddVertex(output, v1)
-	v2_index := MeshBuffer_AddVertex(output, v2)
-	v3_index := MeshBuffer_AddVertex(output, v3)
-	v4_index := MeshBuffer_AddVertex(output, v4)
+	v1_index := add_vertex_mesh_buffer(output, v1)
+	v2_index := add_vertex_mesh_buffer(output, v2)
+	v3_index := add_vertex_mesh_buffer(output, v3)
+	v4_index := add_vertex_mesh_buffer(output, v4)
 
-	MeshBuffer_AddQuad(output, v1_index, v2_index, v3_index, v4_index)
+	add_quad_mesh_buffer(output, v1_index, v2_index, v3_index, v4_index)
 }
 
-DrawQuadOutline :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex, thickness: f32) {
+draw_quad_outline :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex, thickness: f32) {
 	mean := (v1.position + v2.position + v3.position + v4.position) / 4.0
 
 	v1_outer := v1
@@ -582,24 +582,24 @@ DrawQuadOutline :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex, thickness: 
 	v4_outer := v4
 	v4_outer.position = v4.position + (linalg.vector_normalize(v4.position - mean) * thickness)
 
-	line := NLineStrip_Begin(output)
-	NLineStrip_Extend(&line, v1, v1_outer)
-	NLineStrip_Extend(&line, v2, v2_outer)
-	NLineStrip_Extend(&line, v3, v3_outer)
-	NLineStrip_Extend(&line, v4, v4_outer)
-	NLineStrip_Extend(&line, v1, v1_outer)
+	line := begin_nline_strip(output)
+	extend_nline_strip(&line, v1, v1_outer)
+	extend_nline_strip(&line, v2, v2_outer)
+	extend_nline_strip(&line, v3, v3_outer)
+	extend_nline_strip(&line, v4, v4_outer)
+	extend_nline_strip(&line, v1, v1_outer)
 }
 
-DrawRect :: proc(output: ^MeshBuffer, rect: Rect) {
-	v1 := GetVertex2DUV(rect.x0, rect.y0, 0, 0)
-	v2 := GetVertex2DUV(rect.x0, rect.y0 + rect.height, 0, 1)
-	v3 := GetVertex2DUV(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
-	v4 := GetVertex2DUV(rect.x0 + rect.width, rect.y0, 1, 0)
+draw_rect :: proc(output: ^MeshBuffer, rect: Rect) {
+	v1 := get_vertex_2d_uv(rect.x0, rect.y0, 0, 0)
+	v2 := get_vertex_2d_uv(rect.x0, rect.y0 + rect.height, 0, 1)
+	v3 := get_vertex_2d_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
+	v4 := get_vertex_2d_uv(rect.x0 + rect.width, rect.y0, 1, 0)
 
-	DrawQuad(output, v1, v2, v3, v4)
+	draw_quad(output, v1, v2, v3, v4)
 }
 
-DrawRectOutline :: proc(output: ^MeshBuffer, rect: Rect, thickness: f32) {
+draw_rect_outline :: proc(output: ^MeshBuffer, rect: Rect, thickness: f32) {
 	using rect
 	x1 := x0 + width
 	y1 := y0 + height
@@ -611,13 +611,13 @@ DrawRectOutline :: proc(output: ^MeshBuffer, rect: Rect, thickness: f32) {
 	// 3       4
 	// 111111114
 
-	DrawRect(output, {x0 - thickness, y0 - thickness, width + thickness, thickness})
-	DrawRect(output, {x0, y1, width + thickness, thickness})
-	DrawRect(output, {x0 - thickness, y0, thickness, height + thickness})
-	DrawRect(output, {x1, y0 - thickness, thickness, height + thickness})
+	draw_rect(output, {x0 - thickness, y0 - thickness, width + thickness, thickness})
+	draw_rect(output, {x0, y1, width + thickness, thickness})
+	draw_rect(output, {x0 - thickness, y0, thickness, height + thickness})
+	draw_rect(output, {x1, y0 - thickness, thickness, height + thickness})
 }
 
-GetEdgeCountForArc :: proc(
+arc_edge_count :: proc(
 	radius: f32,
 	angle: f32 = math.TAU,
 	max_circle_edge_count: int = 64,
@@ -635,27 +635,27 @@ GetEdgeCountForArc :: proc(
 }
 
 
-DrawArc :: proc(
+draw_arc :: proc(
 	output: ^MeshBuffer,
 	x_center, y_center, radius, start_angle, end_angle: f32,
 	edge_count: int,
 ) {
-	ngon := NGon_Begin(output)
-	center := GetVertex2D(x_center, y_center)
-	NGon_Extend(&ngon, center)
+	ngon := begin_ngon(output)
+	center := get_vertex_2d(x_center, y_center)
+	extend_ngon(&ngon, center)
 
 	delta_angle := (end_angle - start_angle) / f32(edge_count)
 	for angle := end_angle; angle > start_angle - delta_angle + 0.001; angle -= delta_angle {
 		x := x_center + radius * math.cos(angle)
 		y := y_center + radius * math.sin(angle)
 
-		v := GetVertex2D(x, y)
-		NGon_Extend(&ngon, v)
+		v := get_vertex_2d(x, y)
+		extend_ngon(&ngon, v)
 	}
 }
 
 
-DrawArcOutline :: proc(
+draw_arc_outline :: proc(
 	output: ^MeshBuffer,
 	x_center, y_center, radius, start_angle, end_angle: f32,
 	edge_count: int,
@@ -667,7 +667,7 @@ DrawArcOutline :: proc(
 
 	delta_angle := (end_angle - start_angle) / f32(edge_count)
 
-	nline := NLineStrip_Begin(output)
+	nline := begin_nline_strip(output)
 	for angle := end_angle; angle > start_angle - delta_angle + 0.001; angle -= delta_angle {
 		sin_angle := math.sin(angle)
 		cos_angle := math.cos(angle)
@@ -678,18 +678,18 @@ DrawArcOutline :: proc(
 		X2 := x_center + (radius + thickness) * cos_angle
 		Y2 := y_center + (radius + thickness) * sin_angle
 
-		v1 := GetVertex2D(X1, Y1)
-		v2 := GetVertex2D(X2, Y2)
-		NLineStrip_Extend(&nline, v1, v2)
+		v1 := get_vertex_2d(X1, Y1)
+		v2 := get_vertex_2d(X2, Y2)
+		extend_nline_strip(&nline, v1, v2)
 	}
 }
 
-DrawCircle :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int) {
-	DrawArc(output, x0, y0, r, 0, math.TAU, edges)
+draw_circle :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int) {
+	draw_arc(output, x0, y0, r, 0, math.TAU, edges)
 }
 
-DrawCircleOutline :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int, thickness: f32) {
-	DrawArcOutline(output, x0, y0, r, 0, math.TAU, edges, thickness)
+draw_circle_outline :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int, thickness: f32) {
+	draw_arc_outline(output, x0, y0, r, 0, math.TAU, edges, thickness)
 }
 
 
@@ -698,17 +698,21 @@ CapType :: enum {
 	Circle,
 }
 
-DrawLine__DrawCap :: proc(output: ^MeshBuffer, x0, y0, angle, thickness: f32, cap_type: CapType) {
+draw_line__draw_cap :: proc(
+	output: ^MeshBuffer,
+	x0, y0, angle, thickness: f32,
+	cap_type: CapType,
+) {
 	switch cap_type {
 	case .None:
 	// do nothing
 	case .Circle:
-		edge_count := GetEdgeCountForArc(thickness, math.PI, 64)
-		DrawArc(output, x0, y0, thickness, angle - math.PI / 2, angle + math.PI / 2, edge_count)
+		edge_count := arc_edge_count(thickness, math.PI, 64)
+		draw_arc(output, x0, y0, thickness, angle - math.PI / 2, angle + math.PI / 2, edge_count)
 	}
 }
 
-DrawLineOutline__DrawCapOutline :: proc(
+draw_line_outline__draw_cap_outline :: proc(
 	output: ^MeshBuffer,
 	x0, y0, angle, thickness: f32,
 	cap_type: CapType,
@@ -732,16 +736,16 @@ DrawLineOutline__DrawCapOutline :: proc(
 		p1_outer_y := p1_inner_y + line_vec_y * outline_thickness
 		p2_outer_y := p2_inner_y + line_vec_y * outline_thickness
 
-		DrawQuad(
-			output, 
-			GetVertex2D(p1_inner_x, p1_inner_y),
-			GetVertex2D(p1_outer_x, p1_outer_y),
-			GetVertex2D(p2_outer_x, p2_outer_y),
-			GetVertex2D(p2_inner_x, p2_inner_y),
-		);
+		draw_quad(
+			output,
+			get_vertex_2d(p1_inner_x, p1_inner_y),
+			get_vertex_2d(p1_outer_x, p1_outer_y),
+			get_vertex_2d(p2_outer_x, p2_outer_y),
+			get_vertex_2d(p2_inner_x, p2_inner_y),
+		)
 	case .Circle:
-		edge_count := GetEdgeCountForArc(thickness, math.PI, 64)
-		DrawArcOutline(
+		edge_count := arc_edge_count(thickness, math.PI, 64)
+		draw_arc_outline(
 			output,
 			x0,
 			y0,
@@ -754,7 +758,7 @@ DrawLineOutline__DrawCapOutline :: proc(
 	}
 }
 
-DrawLine :: proc(
+draw_line :: proc(
 	output: ^MeshBuffer,
 	x0, y0: f32,
 	x1, y1: f32,
@@ -771,19 +775,19 @@ DrawLine :: proc(
 	perpX := -thickness * dirY / mag
 	perpY := thickness * dirX / mag
 
-	v1 := GetVertex2D(x0 + perpX, y0 + perpY)
-	v2 := GetVertex2D(x0 - perpX, y0 - perpY)
-	v3 := GetVertex2D(x1 - perpX, y1 - perpY)
-	v4 := GetVertex2D(x1 + perpX, y1 + perpY)
-	DrawQuad(output, v1, v2, v3, v4)
+	v1 := get_vertex_2d(x0 + perpX, y0 + perpY)
+	v2 := get_vertex_2d(x0 - perpX, y0 - perpY)
+	v3 := get_vertex_2d(x1 - perpX, y1 - perpY)
+	v4 := get_vertex_2d(x1 + perpX, y1 + perpY)
+	draw_quad(output, v1, v2, v3, v4)
 
 	startAngle := math.atan2(dirY, dirX)
-	DrawLine__DrawCap(output, x0, y0, startAngle - math.PI, thickness, cap_type)
-	DrawLine__DrawCap(output, x1, y1, startAngle, thickness, cap_type)
+	draw_line__draw_cap(output, x0, y0, startAngle - math.PI, thickness, cap_type)
+	draw_line__draw_cap(output, x1, y1, startAngle, thickness, cap_type)
 }
 
 
-DrawLineOutline :: proc(
+draw_line_outline :: proc(
 	output: ^MeshBuffer,
 	x0, y0: f32,
 	x1, y1: f32,
@@ -805,22 +809,22 @@ DrawLineOutline :: proc(
 	perpYOuter := (thickness + outline_thicknes) * dirX / mag
 
 	// draw quad on one side of the line
-	vInner := GetVertex2DUV(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
-	vOuter := GetVertex2DUV(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
-	v1Inner := GetVertex2DUV(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
-	v1Outer := GetVertex2DUV(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
-	DrawQuad(output, vInner, vOuter, v1Outer, v1Inner)
+	vInner := get_vertex_2d_uv(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
+	vOuter := get_vertex_2d_uv(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
+	v1Inner := get_vertex_2d_uv(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
+	v1Outer := get_vertex_2d_uv(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
+	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// draw quad on other side of the line
-	vInner = GetVertex2DUV(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
-	vOuter = GetVertex2DUV(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
-	v1Inner = GetVertex2DUV(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
-	v1Outer = GetVertex2DUV(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
-	DrawQuad(output, vInner, vOuter, v1Outer, v1Inner)
+	vInner = get_vertex_2d_uv(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
+	vOuter = get_vertex_2d_uv(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
+	v1Inner = get_vertex_2d_uv(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
+	v1Outer = get_vertex_2d_uv(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
+	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// Draw both caps
 	startAngle := math.atan2(dirY, dirX)
-	DrawLineOutline__DrawCapOutline(
+	draw_line_outline__draw_cap_outline(
 		output,
 		x0,
 		y0,
@@ -829,7 +833,7 @@ DrawLineOutline :: proc(
 		cap_type,
 		outline_thicknes,
 	)
-	DrawLineOutline__DrawCapOutline(
+	draw_line_outline__draw_cap_outline(
 		output,
 		x1,
 		y1,
@@ -844,7 +848,7 @@ DrawLineOutline :: proc(
 // -------- Keyboard input --------
 
 
-KeyWasDown :: proc(key: KeyCode) -> bool {
+key_was_down :: proc(key: KeyCode) -> bool {
 	if key == .Unknown {
 		return false
 	}
@@ -852,7 +856,7 @@ KeyWasDown :: proc(key: KeyCode) -> bool {
 	return keyboard_state_prev[int(key)]
 }
 
-KeyIsDown :: proc(key: KeyCode) -> bool {
+key_is_down :: proc(key: KeyCode) -> bool {
 	if key == .Unknown {
 		return false
 	}
@@ -860,22 +864,22 @@ KeyIsDown :: proc(key: KeyCode) -> bool {
 	return keyboard_state_curr[int(key)]
 }
 
-KeyJustPressed :: proc(key: KeyCode) -> bool {
-	return (!KeyWasDown(key)) && KeyIsDown(key)
+key_just_pressed :: proc(key: KeyCode) -> bool {
+	return (!key_was_down(key)) && key_is_down(key)
 }
 
-KeyJustReleased :: proc(key: KeyCode) -> bool {
-	return KeyWasDown(key) && (!KeyIsDown(key))
+key_just_released :: proc(key: KeyCode) -> bool {
+	return key_was_down(key) && (!key_is_down(key))
 }
 
 @(private)
-internal_UpdateKeyInputsBeforePoll :: proc() {
+internal_update_key_inputs_before_poll :: proc() {
 	inputted_runes_count = 0
 	keys_just_pressed_count = 0
 }
 
 @(private)
-internal_UpdateKeyInput :: proc() {
+internal_update_key_input :: proc() {
 	was_any_down = is_any_down
 	is_any_down = false
 
@@ -905,28 +909,28 @@ internal_UpdateKeyInput :: proc() {
 	}
 }
 
-GetMouseScroll :: proc() -> f32 {
+get_mouse_scroll :: proc() -> f32 {
 	return mouse_wheel_notches
 }
 
 // we are kinda just assuming these are 0, 1, 2
-MouseButtonIsDown :: proc(mb: MBCode) -> bool {
+mouse_button_is_down :: proc(mb: MBCode) -> bool {
 	return mouse_button_states[mb]
 }
 
-MouseButtonWasDown :: proc(mb: MBCode) -> bool {
+mouse_button_was_down :: proc(mb: MBCode) -> bool {
 	return prev_mouse_button_states[mb]
 }
 
-MouseButtonJustPressed :: proc(b: MBCode) -> bool {
-	return !MouseButtonWasDown(b) && MouseButtonIsDown(b)
+mouse_button_just_pressed :: proc(b: MBCode) -> bool {
+	return !mouse_button_was_down(b) && mouse_button_is_down(b)
 }
 
-MouseButtonJustReleased :: proc(b: MBCode) -> bool {
-	return MouseButtonWasDown(b) && !MouseButtonIsDown(b)
+mouse_button_just_released :: proc(b: MBCode) -> bool {
+	return mouse_button_was_down(b) && !mouse_button_is_down(b)
 }
 
-GetMousePos :: proc() -> Vec2 {
+get_mouse_pos :: proc() -> Vec2 {
 	return(
 		Vec2{
 			internal_mouse_position.x - layout_rect.x0,
@@ -935,11 +939,11 @@ GetMousePos :: proc() -> Vec2 {
 	)
 }
 
-SetMousePosition :: proc(pos: Vec2) {
+set_mouse_position :: proc(pos: Vec2) {
 	glfw.SetCursorPos(window, f64(pos.x), f64(pos.y))
 }
 
-GetMouseDelta :: proc() -> Vec2 {
+get_mouse_delta :: proc() -> Vec2 {
 	return mouse_delta
 }
 
@@ -947,8 +951,8 @@ internal_glfw_scroll_callback :: proc "c" (window: glfw.WindowHandle, xoffset, y
 	incoming_mouse_wheel_notches += f32(xoffset)
 }
 
-MouseIsOver :: proc(rect: Rect) -> bool {
-	pos := GetMousePos()
+mouse_is_over :: proc(rect: Rect) -> bool {
+	pos := get_mouse_pos()
 	x := pos[0]
 	y := pos[1]
 
@@ -960,7 +964,7 @@ MouseIsOver :: proc(rect: Rect) -> bool {
 	return (x > left && x < right) && (y < top && y > bottom)
 }
 
-internal_UpdateMouseInput :: proc() {
+internal_update_mouse_input :: proc() {
 	for i in MBCode {
 		prev_mouse_button_states[i] = mouse_button_states[i]
 	}

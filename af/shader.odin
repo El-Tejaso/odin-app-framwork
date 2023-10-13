@@ -13,38 +13,33 @@ Shader :: struct {
 	color_loc:      int,
 }
 
-Shader_MakeVertexFragmentSource :: proc(vertex_source, fragment_source: string) -> ^Shader {
+new_shader :: proc(vertex_source, fragment_source: string) -> ^Shader {
 	vertex_cstr := strings.clone_to_cstring(vertex_source)
 	defer delete(vertex_cstr)
-	vertex_handle := CompileShader(vertex_cstr, gl.VERTEX_SHADER)
+	vertex_handle := compile_shader(vertex_cstr, gl.VERTEX_SHADER)
 
 	fragment_cstr := strings.clone_to_cstring(fragment_source)
 	defer delete(fragment_cstr)
-	fragment_handle := CompileShader(fragment_cstr, gl.FRAGMENT_SHADER)
+	fragment_handle := compile_shader(fragment_cstr, gl.FRAGMENT_SHADER)
 
 	shader := new(Shader)
-	shader.handle = LinkProgram(vertex_handle, fragment_handle)
-	shader.transform_loc = Shader_UniformLocation(shader, "model")
-	shader.view_loc = Shader_UniformLocation(shader, "view")
-	shader.projection_loc = Shader_UniformLocation(shader, "projection")
-	shader.color_loc = Shader_UniformLocation(shader, "color")
+	shader.handle = link_program(vertex_handle, fragment_handle)
+	shader.transform_loc = get_shader_uniform(shader, "model")
+	shader.view_loc = get_shader_uniform(shader, "view")
+	shader.projection_loc = get_shader_uniform(shader, "projection")
+	shader.color_loc = get_shader_uniform(shader, "color")
 
-	DebugLog("%v", shader)
+	debug_log("%v", shader)
 
 	return shader
 }
 
 // This will exit the program if we couldn't compile a shader
-CompileShader :: proc(source: cstring, type: c.uint) -> c.uint {
+compile_shader :: proc(source: cstring, type: c.uint) -> c.uint {
 	source := source
-	source_length : c.int = c.int(len(source))
+	source_length: c.int = c.int(len(source))
 	shader_handle := gl.CreateShader(type)
-	gl.ShaderSource(
-		shader_handle,
-		1,
-		&source,
-		&source_length,
-	)
+	gl.ShaderSource(shader_handle, 1, &source, &source_length)
 	gl.CompileShader(shader_handle)
 
 	compile_status: c.int
@@ -53,7 +48,7 @@ CompileShader :: proc(source: cstring, type: c.uint) -> c.uint {
 		info_log: [1024]u8
 		length: c.int
 		gl.GetShaderInfoLog(shader_handle, 1024, &length, raw_data(&info_log))
-		DebugLog("ERROR when compiling shader:\n%s", info_log, should_panic=true)
+		debug_log("ERROR when compiling shader:\n%s", info_log, should_panic = true)
 		return 0
 	}
 
@@ -61,7 +56,7 @@ CompileShader :: proc(source: cstring, type: c.uint) -> c.uint {
 }
 
 
-LinkProgram :: proc(vertex_handle, fragment_handle: c.uint) -> c.uint {
+link_program :: proc(vertex_handle, fragment_handle: c.uint) -> c.uint {
 	program := gl.CreateProgram()
 	gl.AttachShader(program, vertex_handle)
 	gl.AttachShader(program, fragment_handle)
@@ -73,7 +68,7 @@ LinkProgram :: proc(vertex_handle, fragment_handle: c.uint) -> c.uint {
 		info_log: [1024]u8
 		length: c.int
 		gl.GetProgramInfoLog(program, 1024, &length, raw_data(&info_log))
-		DebugLog("ERROR when linking shader:\n%s", info_log, should_panic=true)
+		debug_log("ERROR when linking shader:\n%s", info_log, should_panic = true)
 		return 0
 	}
 
@@ -84,16 +79,16 @@ LinkProgram :: proc(vertex_handle, fragment_handle: c.uint) -> c.uint {
 	return program
 }
 
-Shader_UniformLocation :: proc(shader: ^Shader, name: cstring) -> int {
+get_shader_uniform :: proc(shader: ^Shader, name: cstring) -> int {
 	loc := gl.GetUniformLocation(c.uint(shader.handle), name)
 	if (loc == -1) {
-		DebugLog("Warning: Could not find uniform %s", name, should_panic=false)
+		debug_log("Warning: Could not find uniform %s", name, should_panic = false)
 	}
 
 	return int(loc)
 }
 
-Shader_UniformCount :: proc(shader: ^Shader) -> c.int {
+get_shader_uniform_count :: proc(shader: ^Shader) -> c.int {
 	count := [1]c.int{}
 	gl.GetProgramiv(c.uint(shader.handle), gl.ACTIVE_UNIFORMS, raw_data(&count))
 	return count[0]
@@ -108,35 +103,35 @@ Shader_UniformCount :: proc(shader: ^Shader) -> c.int {
 //     return 
 // }
 
-internal_Shader_Use :: proc(shader: ^Shader) {
+internal_shader_use :: proc(shader: ^Shader) {
 	gl.UseProgram(shader.handle)
 }
 
-Shader_SetInt :: proc(loc: int, data: int) {
+set_shader_int :: proc(loc: int, data: int) {
 	gl.Uniform1i(c.int(loc), c.int(data))
 }
 
-Shader_SetFloat :: proc(loc: int, data: f32) {
+set_shader_float :: proc(loc: int, data: f32) {
 	gl.Uniform1f(c.int(loc), data)
 }
 
-Shader_SetMatrix4 :: proc(loc: int, data: ^Mat4) {
+set_shader_mat4 :: proc(loc: int, data: ^Mat4) {
 	gl.UniformMatrix4fv(c.int(loc), 1, false, raw_data(data))
 }
 
-Shader_SetVector2 :: proc(loc: int, data: Vec2) {
+set_shader_vec2 :: proc(loc: int, data: Vec2) {
 	gl.Uniform2f(c.int(loc), data[0], data[1])
 }
 
-Shader_SetVector3 :: proc(loc: int, data: Vec3) {
+set_shader_vec3 :: proc(loc: int, data: Vec3) {
 	gl.Uniform3f(c.int(loc), data[0], data[1], data[2])
 }
 
-Shader_SetVector4 :: proc(loc: int, data: Vec4) {
+set_shader_vec4 :: proc(loc: int, data: Vec4) {
 	gl.Uniform4f(c.int(loc), data[0], data[1], data[2], data[3])
 }
 
-Shader_Free :: proc(shader: ^Shader) {
+free_shader :: proc(shader: ^Shader) {
 	gl.DeleteProgram(shader.handle)
 
 	free(shader)

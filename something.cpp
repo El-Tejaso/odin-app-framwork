@@ -24,7 +24,7 @@ void internal_UseFramebufferDirectly(Framebuffer *framebuffer);
 void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_RELEASE) return;
     if (static_keys_just_pressed_or_repeated_count >= KEY_LAST) {
-        DebugLog("WARNING - key input buffer is full");
+        debug_log("WARNING - key input buffer is full");
         return;
     }
 
@@ -34,7 +34,7 @@ void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, in
 
 void glfw_character_callback(GLFWwindow* window, unsigned int codepoint) {
     if (static_keys_just_pressed_or_repeated_count >= KEY_LAST) {
-        DebugLog("WARNING - text buffer is full");
+        debug_log("WARNING - text buffer is full");
         return;
     }
 
@@ -386,7 +386,7 @@ void internal_InitRendering() {
 
         char buffer[1024];
         sprintf(buffer, "Context initialized. OpenGL info: %s, Version: %s", glGetString(GL_VENDOR), glGetString(GL_VERSION));
-        DebugLog(buffer);
+        debug_log(buffer);
 
         SetBackfaceCulling(false);
     }

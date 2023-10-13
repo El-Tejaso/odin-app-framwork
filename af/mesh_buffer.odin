@@ -26,12 +26,12 @@ NGon :: struct {
 }
 
 
-MeshBuffer_Make :: proc(vert_capacity, indices_capacity: c.uint) -> ^MeshBuffer {
-	DebugLog("making mesh")
-	backing_mesh := Mesh_Make(vert_capacity, indices_capacity)
-	DebugLog("mesh made")
-	Mesh_Upload(backing_mesh, true)
-	DebugLog("uploaded")
+new_mesh_buffer :: proc(vert_capacity, indices_capacity: c.uint) -> ^MeshBuffer {
+	debug_log("making mesh")
+	backing_mesh := new_mesh(vert_capacity, indices_capacity)
+	debug_log("mesh made")
+	upload_mesh(backing_mesh, true)
+	debug_log("uploaded")
 
 	buffer := new(MeshBuffer)
 	buffer.mesh = backing_mesh
@@ -39,27 +39,27 @@ MeshBuffer_Make :: proc(vert_capacity, indices_capacity: c.uint) -> ^MeshBuffer 
 	return buffer
 }
 
-MeshBuffer_Free :: proc(output: ^MeshBuffer) {
-	Mesh_Free(output.mesh)
+free_mesh_buffer :: proc(output: ^MeshBuffer) {
+	free_mesh(output.mesh)
 
 	free(output)
 }
 
-MeshBuffer_Flush :: proc(output: ^MeshBuffer) {
+flush_mesh_buffer :: proc(output: ^MeshBuffer) {
 	if output.vertices_count == 0 && output.indices_count == 0 {
 		return
 	}
 
 	if !output.is_builder {
-		Mesh_Reupload(output.mesh, output.vertices_count, output.indices_count)
-		Mesh_Draw(output.mesh, output.indices_count)
+		reupload_mesh(output.mesh, output.vertices_count, output.indices_count)
+		draw_mesh(output.mesh, output.indices_count)
 	}
-	
+
 	output.vertices_count = 0
 	output.indices_count = 0
 }
 
-MeshBuffer_AddVertex :: proc(output: ^MeshBuffer, vertex: Vertex) -> c.uint {
+add_vertex_mesh_buffer :: proc(output: ^MeshBuffer, vertex: Vertex) -> c.uint {
 	count := output.vertices_count
 	assert(count + 1 <= output.mesh.vertices_length)
 
@@ -68,7 +68,7 @@ MeshBuffer_AddVertex :: proc(output: ^MeshBuffer, vertex: Vertex) -> c.uint {
 	return count
 }
 
-MeshBuffer_AddTriangle :: proc(output: ^MeshBuffer, v1, v2, v3: c.uint) {
+add_mesh_buffer_triangle :: proc(output: ^MeshBuffer, v1, v2, v3: c.uint) {
 	count := output.indices_count
 	assert(count + 3 <= output.mesh.indices_length)
 
@@ -78,12 +78,12 @@ MeshBuffer_AddTriangle :: proc(output: ^MeshBuffer, v1, v2, v3: c.uint) {
 	output.indices_count += 3
 }
 
-MeshBuffer_AddQuad :: proc(output: ^MeshBuffer, v1, v2, v3, v4: c.uint) {
-	MeshBuffer_AddTriangle(output, v1, v2, v3)
-	MeshBuffer_AddTriangle(output, v3, v4, v1)
+add_quad_mesh_buffer :: proc(output: ^MeshBuffer, v1, v2, v3, v4: c.uint) {
+	add_mesh_buffer_triangle(output, v1, v2, v3)
+	add_mesh_buffer_triangle(output, v3, v4, v1)
 }
 
-MeshBuffer_HasEnoughSpace :: proc(
+mesh_buffer_has_enough_space :: proc(
 	output: ^MeshBuffer,
 	incoming_verts, incoming_indices: c.uint,
 ) -> bool {
@@ -93,49 +93,49 @@ MeshBuffer_HasEnoughSpace :: proc(
 	)
 }
 
-MeshBuffer_FlushIfNotEnoughSpace :: proc(
+flush_mesh_buffer_if_not_enough_space :: proc(
 	output: ^MeshBuffer,
 	incoming_verts, incoming_indices: c.uint,
 ) -> bool {
-	if (!MeshBuffer_HasEnoughSpace(output, incoming_verts, incoming_indices)) {
-		MeshBuffer_Flush(output)
+	if (!mesh_buffer_has_enough_space(output, incoming_verts, incoming_indices)) {
+		flush_mesh_buffer(output)
 		return true
 	}
 
 	return false
 }
 
-NLineStrip_Begin :: proc(output: ^MeshBuffer) -> NLineStrip {
+begin_nline_strip :: proc(output: ^MeshBuffer) -> NLineStrip {
 	state: NLineStrip
 	state.started = false
 	state.output = output
 	return state
 }
 
-NLineStrip_Extend :: proc(line: ^NLineStrip, v1, v2: Vertex) {
+extend_nline_strip :: proc(line: ^NLineStrip, v1, v2: Vertex) {
 	output: ^MeshBuffer = line.output
 	if (!line.started) {
-		MeshBuffer_FlushIfNotEnoughSpace(output, 4, 6)
+		flush_mesh_buffer_if_not_enough_space(output, 4, 6)
 
 		line.v1 = v1
 		line.v2 = v2
-		line.v1_index = MeshBuffer_AddVertex(output, v1)
-		line.v2_index = MeshBuffer_AddVertex(output, v2)
+		line.v1_index = add_vertex_mesh_buffer(output, v1)
+		line.v2_index = add_vertex_mesh_buffer(output, v2)
 		line.started = true
 		return
 	}
 
-	if (MeshBuffer_FlushIfNotEnoughSpace(output, 2, 6)) {
+	if (flush_mesh_buffer_if_not_enough_space(output, 2, 6)) {
 		// v1 and v2 just got flushed, so we need to re-add them
-		line.v1_index = MeshBuffer_AddVertex(output, line.v1)
-		line.v2_index = MeshBuffer_AddVertex(output, line.v2)
+		line.v1_index = add_vertex_mesh_buffer(output, line.v1)
+		line.v2_index = add_vertex_mesh_buffer(output, line.v2)
 	}
 
-	next_last_1_index := MeshBuffer_AddVertex(output, v1)
-	next_last_2_index := MeshBuffer_AddVertex(output, v2)
+	next_last_1_index := add_vertex_mesh_buffer(output, v1)
+	next_last_2_index := add_vertex_mesh_buffer(output, v2)
 
-	MeshBuffer_AddTriangle(output, line.v1_index, line.v2_index, next_last_2_index)
-	MeshBuffer_AddTriangle(output, next_last_2_index, next_last_1_index, line.v1_index)
+	add_mesh_buffer_triangle(output, line.v1_index, line.v2_index, next_last_2_index)
+	add_mesh_buffer_triangle(output, next_last_2_index, next_last_1_index, line.v1_index)
 
 	line.v1 = v1
 	line.v2 = v2
@@ -144,43 +144,43 @@ NLineStrip_Extend :: proc(line: ^NLineStrip, v1, v2: Vertex) {
 }
 
 
-NGon_Begin :: proc(output: ^MeshBuffer) -> NGon {
+begin_ngon :: proc(output: ^MeshBuffer) -> NGon {
 	ngon: NGon
 	ngon.count = 0
 	ngon.output = output
 	return ngon
 }
 
-NGon_Extend :: proc(ngon: ^NGon, v: Vertex) {
+extend_ngon :: proc(ngon: ^NGon, v: Vertex) {
 	output: ^MeshBuffer = ngon.output
 
 	// we need at least 2 vertices to start creating triangles with NGonContinue.
 	if (ngon.count == 0) {
-		MeshBuffer_FlushIfNotEnoughSpace(output, 3, 3)
+		flush_mesh_buffer_if_not_enough_space(output, 3, 3)
 
-		ngon.v1_index = MeshBuffer_AddVertex(output, v)
+		ngon.v1_index = add_vertex_mesh_buffer(output, v)
 		ngon.v1 = v
 		ngon.count += 1
 		return
 	}
 
 	if (ngon.count == 1) {
-		MeshBuffer_FlushIfNotEnoughSpace(output, 2, 3)
+		flush_mesh_buffer_if_not_enough_space(output, 2, 3)
 
-		ngon.v2_index = MeshBuffer_AddVertex(output, v)
+		ngon.v2_index = add_vertex_mesh_buffer(output, v)
 		ngon.v2 = v
 		ngon.count += 1
 		return
 	}
 
-	if (MeshBuffer_FlushIfNotEnoughSpace(output, 1, 3)) {
+	if (flush_mesh_buffer_if_not_enough_space(output, 1, 3)) {
 		// v1 and v2 just got flushed, so we need to re-add them
-		ngon.v1_index = MeshBuffer_AddVertex(output, ngon.v1)
-		ngon.v2_index = MeshBuffer_AddVertex(output, ngon.v2)
+		ngon.v1_index = add_vertex_mesh_buffer(output, ngon.v1)
+		ngon.v2_index = add_vertex_mesh_buffer(output, ngon.v2)
 	}
 
-	v3 := MeshBuffer_AddVertex(output, v)
-	MeshBuffer_AddTriangle(output, ngon.v1_index, ngon.v2_index, v3)
+	v3 := add_vertex_mesh_buffer(output, v)
+	add_mesh_buffer_triangle(output, ngon.v1_index, ngon.v2_index, v3)
 
 	ngon.v2_index = v3
 	ngon.v2 = v

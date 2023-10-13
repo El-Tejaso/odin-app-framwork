@@ -1,0 +1,21 @@
+Function names:
+
+Trying out a new API convention that might result in an API that is easier to memorize:
+    (verb)(_object)?(_property)?
+
+Common (verb)s:
+
+set_<object_>?<property> - sets data in memory or a 3Rd party API
+get_<object_>?<property> - gets data in  memory or a third party API, or initializes a struct
+
+new_<object> - allocates and initializes a struct
+free_<object> - frees something we got from a new_ method
+resize_<object> - reallocates the backing datastructures to a new exact size
+
+upload_<object> - sends a large amount of data to a 3rd party API, like an entire mesh to OpenGL
+draw_<object> - pushes vertices and triangles to a mesh buffer
+
+
+Old convention:
+    (Object_)(Action)
+It was much easier to name things,

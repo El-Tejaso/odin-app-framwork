@@ -1,7 +1,7 @@
 package af
 
 // Used for rendering most things.
-Shader_MakeDefaultShader :: proc() -> ^Shader {
+new_shader_default :: proc() -> ^Shader {
 	vertex_source :=
 		"#version 330\n" +
 		"uniform mat4 model;" +
@@ -28,6 +28,6 @@ Shader_MakeDefaultShader :: proc() -> ^Shader {
 		//"   frag_color = color * vec4(1, 0, 0, 1);" +
 		"}"
 
-	shader := Shader_MakeVertexFragmentSource(vertex_source, fragment_source)
+	shader := new_shader(vertex_source, fragment_source)
 	return shader
 }

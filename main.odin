@@ -1,13 +1,3 @@
-
-package main
-
-import "af"
-import "core:fmt"
-
-import "core:math"
-import "core:math/linalg"
-import "core:math/rand"
-
 /**
 
 Not everything has been ported just yet
@@ -15,8 +5,8 @@ Not everything has been ported just yet
 TODO:
 
 - [] Stencil test
-- [] Texture test
 - [] Perspective camera test
+- [x] Texture test
 - [x] Keyboard input test
 - [] Text rendering 
 	- [] code
@@ -28,6 +18,16 @@ TODO:
 	- [] tests/examples
 */
 
+
+package main
+
+import "af"
+import "core:fmt"
+
+import "core:math"
+import "core:math/linalg"
+import "core:math/rand"
+
 randf :: proc() -> f32 {
 	return rand.float32()
 }
@@ -36,7 +36,7 @@ t: f64 = 0
 fps, current_frames: int
 
 // returns true if we ticked up
-TrackFps :: proc(interval: f64) -> bool {
+track_fps :: proc(interval: f64) -> bool {
 	t += af.delta_time
 	if (t > interval) {
 		t = 0
@@ -52,10 +52,12 @@ TrackFps :: proc(interval: f64) -> bool {
 line_benchmark_line_amount := 200
 line_benchmark_thickness :: 5
 
-DrawBenchmarkTest :: proc() {
+verts_uploaded, indices_uploaded: uint
+
+draw_benchmark_test :: proc() {
 	rand.set_global_seed(0)
 
-	if (TrackFps(1.0)) {
+	if (track_fps(1.0)) {
 		// try to figure out how many lines we need to draw to get 60 fps.
 		// we are assuming there is a linear relationship between 'line_benchmark_line_amount', and the time it takes to draw 1 frame
 
@@ -66,18 +68,19 @@ DrawBenchmarkTest :: proc() {
 		)
 
 		fmt.printf("FPS: %v with line_benchmark_line_amount %v\n", fps, line_benchmark_line_amount)
+		fmt.printf("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
 	}
 
-	af.SetDrawColor(af.Color{1, 0, 0, 0.1})
+	af.set_draw_color(af.Color{1, 0, 0, 0.1})
 
 	for i in 0 ..< line_benchmark_line_amount {
-		x1 := af.VW() * randf()
-		y1 := af.VH() * randf()
+		x1 := af.vw() * randf()
+		y1 := af.vh() * randf()
 
-		x2 := af.VW() * randf()
-		y2 := af.VH() * randf()
+		x2 := af.vw() * randf()
+		y2 := af.vh() * randf()
 
-		af.DrawLine(af.mb_im, x1, y1, x2, y2, line_benchmark_thickness, .Circle)
+		af.draw_line(af.im, x1, y1, x2, y2, line_benchmark_thickness, .Circle)
 	}
 }
 
@@ -86,50 +89,52 @@ fb: ^af.Framebuffer
 wCX :: 400
 wCY :: 300
 
-FramabufferTest__DrawDualCirclesCenter :: proc(x, y: f32) {
-	af.DrawCircle(af.mb_im, x - 100, y - 100, 200, 64)
-	af.DrawCircle(af.mb_im, x + 100, y + 100, 200, 64)
+framabuffer_test__draw_dual_circles_center :: proc(x, y: f32) {
+	af.draw_circle(af.im, x - 100, y - 100, 200, 64)
+	af.draw_circle(af.im, x + 100, y + 100, 200, 64)
 }
 
-DrawFramebufferTest :: proc() {
-	af.UseFramebuffer(fb)
+draw_framebuffer_test :: proc() {
+	af.use_framebuffer(fb)
 	{
-		af.ClearScreen(af.Color{0, 0, 0, 0})
-		af.SetViewProjection_Cartesian2D(0, 0, 1, 1)
+		af.clear_screen(af.Color{0, 0, 0, 0})
+		af.camera_cartesian2D(0, 0, 1, 1)
 
-		af.DrawRect(af.mb_im, af.Rect{0, 0, 800, 600})
+		af.draw_rect(af.im, af.Rect{0, 0, 800, 600})
 
 		transform := linalg.matrix4_translate(af.Vec3{0, 0, 0})
-		af.SetTransform(transform)
+		af.set_transform(transform)
 
-		af.SetDrawColor(af.Color{0, 0, 1, 1})
-		FramabufferTest__DrawDualCirclesCenter(wCX, wCY)
+		af.set_draw_color(af.Color{0, 0, 1, 1})
+		framabuffer_test__draw_dual_circles_center(wCX, wCY)
 
-		af.SetDrawColor(af.Color{1, 1, 0, 1})
-		af.DrawRect(af.mb_im, af.Rect{wCX, wCY, 50, 50})
+		af.set_draw_color(af.Color{1, 1, 0, 1})
+		af.draw_rect(af.im, af.Rect{wCX, wCY, 50, 50})
 	}
-	af.UseFramebuffer(nil)
+	af.use_framebuffer(nil)
 
-	af.SetViewProjection_Cartesian2D(0, 0, 1, 1)
+	af.camera_cartesian2D(0, 0, 1, 1)
 
-	af.SetDrawColor(af.Color{1, 0, 0, 1})
+	af.set_draw_color(af.Color{1, 0, 0, 1})
 	rectSize :: 200
-	af.DrawRect(af.mb_im, af.Rect{wCX - rectSize, wCY - rectSize, 2 * rectSize, 2 * rectSize})
+	af.draw_rect(af.im, af.Rect{wCX - rectSize, wCY - rectSize, 2 * rectSize, 2 * rectSize})
 
-	af.SetTexture(fb.texture)
-	af.SetDrawColor(af.Color{1, 1, 1, 0.5})
-	af.DrawRect(af.mb_im, af.Rect{0, 0, 800, 600})
+	af.set_texture(fb.texture)
+	af.set_draw_color(af.Color{1, 1, 1, 0.5})
+	af.draw_rect(af.im, af.Rect{0, 0, 800, 600})
 
-	af.SetTexture(nil)
+	af.set_texture(nil)
 
-	af.SetDrawColor(af.Color{0, 1, 0, 0.5})
-	af.DrawRectOutline(af.mb_im, af.Rect{0, 0, 800, 600}, 10)
+	af.set_draw_color(af.Color{0, 1, 0, 0.5})
+	af.draw_rect_outline(af.im, af.Rect{0, 0, 800, 600}, 10)
 }
 
 
-DrawGeometryAndOutlinesTest :: proc() {
+draw_geometry_and_outlines_test :: proc() {
 	ArcTestCase :: struct {
-		x, y, r, a1, a2: f32, edge_count: int, thickness : f32
+		x, y, r, a1, a2: f32,
+		edge_count:      int,
+		thickness:       f32,
 	}
 
 	arc_test_cases :: []ArcTestCase{
@@ -139,69 +144,78 @@ DrawGeometryAndOutlinesTest :: proc() {
 	}
 
 	for t in arc_test_cases {
-		af.SetDrawColor(af.Color{1, 0, 0, 0.5})
-		af.DrawArc(af.mb_im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count)
-		
-		af.SetDrawColor(af.Color{0, 0, 1, 1})
-		af.DrawArcOutline(af.mb_im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count, t.thickness)
+		af.set_draw_color(af.Color{1, 0, 0, 0.5})
+		af.draw_arc(af.im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count)
+
+		af.set_draw_color(af.Color{0, 0, 1, 1})
+		af.draw_arc_outline(af.im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count, t.thickness)
 	}
-	
-	af.SetDrawColor(af.Color{1, 0, 0, 0.5})
-	af.DrawRect(af.mb_im, af.Rect{20, 20, 80, 80})
-	af.SetDrawColor(af.Color{0, 0, 1, 1})
-	af.DrawRectOutline(af.mb_im, af.Rect{20, 20, 80, 80}, 5)
-	
-	af.SetDrawColor(af.Color{1, 0, 0, 0.5})
-	af.DrawCircle(af.mb_im, 500, 500, 200, 64)
-	af.SetDrawColor(af.Color{0, 0, 1, 1})
-	af.DrawCircleOutline(af.mb_im, 500, 500, 200, 64, 10)
+
+	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.draw_rect(af.im, af.Rect{20, 20, 80, 80})
+	af.set_draw_color(af.Color{0, 0, 1, 1})
+	af.draw_rect_outline(af.im, af.Rect{20, 20, 80, 80}, 5)
+
+	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.draw_circle(af.im, 500, 500, 200, 64)
+	af.set_draw_color(af.Color{0, 0, 1, 1})
+	af.draw_circle_outline(af.im, 500, 500, 200, 64, 10)
 
 	lineSize :: 100
 
 	LineTestCase :: struct {
 		x0, y0, x1, y1, thickness: f32,
-		cap_type: af.CapType,
-		outline_thickness: f32
+		cap_type:                  af.CapType,
+		outline_thickness:         f32,
 	}
-	line_test_cases := []LineTestCase {
-		{af.VW() - 60, 60, af.VW() - 100, af.VH() - 100, 10.0, .None, 10},
-		{af.VW() - 100, 60, af.VW() - 130, af.VH() - 200, 10.0, .Circle, 10},
-		{lineSize, lineSize, af.VW() - lineSize, af.VH() - lineSize, lineSize / 2, .Circle, 10},
+	line_test_cases := []LineTestCase{
+		{af.vw() - 60, 60, af.vw() - 100, af.vh() - 100, 10.0, .None, 10},
+		{af.vw() - 100, 60, af.vw() - 130, af.vh() - 200, 10.0, .Circle, 10},
+		{lineSize, lineSize, af.vw() - lineSize, af.vh() - lineSize, lineSize / 2, .Circle, 10},
 	}
 
 	for t in line_test_cases {
-		af.SetDrawColor(af.Color{1, 0, 0, 0.5})
-		af.DrawLine(af.mb_im, t.x0, t.y0, t.x1, t.y1, t.thickness, t.cap_type)
-		
-		af.SetDrawColor(af.Color{0, 0, 1, 1})
-		af.DrawLineOutline(af.mb_im, t.x0, t.y0, t.x1, t.y1, t.thickness, t.cap_type, t.outline_thickness)
+		af.set_draw_color(af.Color{1, 0, 0, 0.5})
+		af.draw_line(af.im, t.x0, t.y0, t.x1, t.y1, t.thickness, t.cap_type)
+
+		af.set_draw_color(af.Color{0, 0, 1, 1})
+		af.draw_line_outline(
+			af.im,
+			t.x0,
+			t.y0,
+			t.x1,
+			t.y1,
+			t.thickness,
+			t.cap_type,
+			t.outline_thickness,
+		)
 	}
 }
 
 arc_test_a: f32 = 0
 arc_test_b: f32 = 0
 
-DrawArcTest__DrawHand :: proc(x0, y0, r, angle: f32) {
-	af.DrawLine(af.mb_im, x0, y0, x0 + r * math.cos(angle), y0 + r * math.sin(angle), 15, .Circle)
+draw_arc_test__draw_hand :: proc(x0, y0, r, angle: f32) {
+	af.draw_line(af.im, x0, y0, x0 + r * math.cos(angle), y0 + r * math.sin(angle), 15, .Circle)
 }
 
-DrawArcTest :: proc() {
-	af.SetDrawColor(af.Color{1, 0, 0, 0.5})
+draw_arc_test :: proc() {
+	af.set_draw_color(af.Color{1, 0, 0, 0.5})
 
-	x0 := af.VW() * 0.5
-	y0 := af.VH() * 0.5
-	r := af.VW() < af.VH() ? af.VW() : af.VH() * 0.45
+	x0 := af.vw() * 0.5
+	y0 := af.vh() * 0.5
+	r := af.vw() < af.vh() ? af.vw() : af.vh() * 0.45
 
 	edges :: 64 // GetEdgeCount(r, fabsf(arc_test_b - arc_test_a), 512);
-	af.DrawArc(af.mb_im, x0, y0, r, arc_test_a, arc_test_b, edges)
+	af.draw_arc(af.im, x0, y0, r, arc_test_a, arc_test_b, edges)
 
-	af.SetDrawColor(af.Color{0, 0, 0, 0.5})
-	DrawArcTest__DrawHand(x0, y0, r, arc_test_a)
-	DrawArcTest__DrawHand(x0, y0, r, arc_test_b)
+	af.set_draw_color(af.Color{0, 0, 0, 0.5})
+	draw_arc_test__draw_hand(x0, y0, r, arc_test_a)
+	draw_arc_test__draw_hand(x0, y0, r, arc_test_b)
 
-	af.SetDrawColor(af.Color{0, 0, 0, 1})
+	af.set_draw_color(af.Color{0, 0, 0, 1})
 	// _font.DrawText(ctx, $"Angle a: {a}\nAngle b: {b}" + a, 16, new DrawTextOptions {
-	//     X = 0, Y = ctx.VH, VAlign=1
+	//     X = 0, Y = ctx.vh(), VAlign=1
 	// });
 
 	arc_test_a += f32(af.delta_time)
@@ -210,8 +224,8 @@ DrawArcTest :: proc() {
 
 
 last_mouse_pos: af.Vec2
-DrawKeyboardAndInputTest :: proc() {
-	pos := af.GetMousePos()
+draw_keyboard_and_input_test :: proc() {
+	pos := af.get_mouse_pos()
 	if (last_mouse_pos.x != pos.x || last_mouse_pos.y != pos.y) {
 		last_mouse_pos = pos
 		fmt.printf("The mouse just moved: %f, %f\n", pos.x, pos.y)
@@ -219,45 +233,79 @@ DrawKeyboardAndInputTest :: proc() {
 
 	// TODO: convert to actual rendering once we implement text rendering. for now, we're just printf-ing everything
 	for key in af.KeyCode {
-		if af.KeyJustPressed(key) {
+		if af.key_just_pressed(key) {
 			fmt.printf("Just pressed a key: %v\n", key)
 		}
 
-		if af.KeyJustReleased(key) {
+		if af.key_just_released(key) {
 			fmt.printf("Just released a key: %v\n", key)
 		}
 	}
 }
 
-DrawRenderingTests :: proc() {
+test_texture: ^af.Texture
+test_texture_2: ^af.Texture
+
+draw_texture_test :: proc() {
+	t += af.delta_time
+
+	af.set_draw_color(af.Color{1, 1, 1, 0.5})
+
+	left_rect := af.Rect{20, 20, af.vw() / 2 - 40, af.vh() - 40}
+	af.set_texture(test_texture)
+	af.draw_rect(af.im, left_rect)
+
+	right_rect := left_rect
+	right_rect.x0 = af.vw() / 2 + 20
+	af.set_texture(test_texture_2)
+	af.draw_rect(af.im, right_rect)
+}
+
+rendering_tests := []struct {
+	fn:   proc(),
+	name: string,
+}{{
+		draw_benchmark_test,
+		"draw_benchmark_test",
+	}, {draw_framebuffer_test, "draw_framebuffer_test"}, {draw_arc_test, "draw_arc_test"}, {draw_geometry_and_outlines_test, "draw_geometry_and_outlines_test"}, {draw_keyboard_and_input_test, "draw_keyboard_and_input_test"}, {draw_texture_test, "draw_texture_test"}}
+current_rendering_test := 0
+
+draw_rendering_tests :: proc() {
 	test_region := af.layout_rect
-	af.Rect_SetWidth(&test_region, af.VW() * 0.75, 0.6)
-	af.Rect_SetHeight(&test_region, af.VH() * 0.75, 0.6)
-	af.SetLayoutRect(test_region, false)
+	af.set_rect_width(&test_region, af.vw() * 0.75, 0.6)
+	af.set_rect_height(&test_region, af.vh() * 0.75, 0.6)
+	af.set_layout_rect(test_region, false)
 
-	af.SetDrawColor(af.Color{1, 0, 0, 0.5})
-	r := af.Rect{0, 0, af.VW(), af.VH()}
-	af.DrawRectOutline(af.mb_im, r, 5)
+	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	r := af.Rect{0, 0, af.vw(), af.vh()}
+	af.draw_rect_outline(af.im, r, 5)
 
-	af.SetLayoutRect(test_region, false)
-	DrawBenchmarkTest()
-
-	af.SetLayoutRect(test_region, false)
-	DrawFramebufferTest()
-
-	af.SetLayoutRect(test_region, false)
-	DrawArcTest()
-
-	af.SetLayoutRect(test_region, false)
-	DrawGeometryAndOutlinesTest()
-
-	af.SetLayoutRect(test_region, false)
-	DrawKeyboardAndInputTest()
+	changed_test := true
+	switch {
+	case af.key_just_pressed(af.KeyCode.Right):
+		current_rendering_test += 1
+		if current_rendering_test > len(rendering_tests) {
+			current_rendering_test = 0
+		}
+	case af.key_just_pressed(af.KeyCode.Left):
+		current_rendering_test -= 1
+		if current_rendering_test < 0 {
+			current_rendering_test = len(rendering_tests) - 1
+		}
+	case:
+		changed_test = false
+	}
+	tt := rendering_tests[current_rendering_test]
+	if changed_test {
+		fmt.printf("\nTest [%d] - %s\n", current_rendering_test, tt.name)
+	}
+	tt.fn()
 }
 
 // I sometimes have to use this to check if there are problems with the immmediate mode rendering
-GetDiagnosticMesh :: proc() -> ^af.Mesh {
-	mesh := af.Mesh_Make(4, 6)
+get_diagnostic_mesh :: proc() -> ^af.Mesh {
+	mesh := af.new_mesh(4, 6)
+
 	mesh.indices[0] = 0
 	mesh.indices[1] = 1
 	mesh.indices[2] = 2
@@ -265,52 +313,67 @@ GetDiagnosticMesh :: proc() -> ^af.Mesh {
 	mesh.indices[4] = 3
 	mesh.indices[5] = 0
 
-	mesh.vertices[0] = af.GetVertex2D(-50, -50)
-	mesh.vertices[1] = af.GetVertex2D(-50, 50)
-	mesh.vertices[2] = af.GetVertex2D(50, 50)
-	mesh.vertices[3] = af.GetVertex2D(50, -50)
-	
-	af.Mesh_Upload(mesh, false)
+	mesh.vertices[0] = af.get_vertex_2d(-50, -50)
+	mesh.vertices[1] = af.get_vertex_2d(-50, 50)
+	mesh.vertices[2] = af.get_vertex_2d(50, 50)
+	mesh.vertices[3] = af.get_vertex_2d(50, -50)
+
+	af.upload_mesh(mesh, false)
 
 	return mesh
 }
 
 main :: proc() {
-	if (!af.Init(800, 600, "Testing the thing")) {
+	if (!af.init(800, 600, "Testing the thing")) {
 		fmt.printf("Could not initialize. rip\n")
-        return
+		return
 	}
-    
+
 	// init test resources
-	fb = af.Framebuffer_MakeFromTexture(af.Texture_FromSize(1, 1))
-	defer af.Framebuffer_Free(fb)
-	af.Framebuffer_Resize(fb, 800, 600)
+	fb = af.new_framebuffer(af.new_texture_size(1, 1))
+	defer af.free_framebuffer(fb)
+	af.resize_framebuffer(fb, 800, 600)
+
+	test_image := af.new_image("./res/settings_icon.png")
+	defer af.free_image(test_image)
+
+	texture_settings := af.DEFAULT_TEXTURE_CONFIG
+
+	texture_settings.filtering = af.TEXTURE_FILTERING_LINEAR
+	test_texture = af.new_texture_image(test_image, texture_settings)
+	defer af.free_texture(test_texture)
+
+	texture_settings.filtering = af.TEXTURE_FILTERING_NEAREST
+	test_texture_2 = af.new_texture_image(test_image, texture_settings)
+	defer af.free_texture(test_texture_2)
 
 	// mesh := GetDiagnosticMesh()
 
-	for !af.WindowShouldClose() && !af.KeyJustPressed(af.KeyCode.Escape) {
-		af.BeginFrame()
+	for !af.window_should_close() && !af.key_just_pressed(af.KeyCode.Escape) {
+		af.begin_frame()
 
-		af.ClearScreen(af.Color{1, 1, 1, 1})
+		af.clear_screen(af.Color{1, 1, 1, 1})
 
-		// af.SetTransform(af.MAT4_IDENTITY)
-		// af.SetView(af.MAT4_IDENTITY)
-		// af.SetProjection(af.MAT4_IDENTITY)
-		// af.SetViewProjection_Cartesian2D(0, 0, 1, 1)
-		// af.SetDrawColor(af.Color{1, 0, 0, 1})
-		// af.Mesh_Draw(mesh, 6)
-		// af.DrawQuad(
-		// 	af.mb_im,
+		// af.set_transform(af.mat4_identity)
+		// af.set_view(af.mat4_identity)
+		// af.set_projection(af.mat4_identity)
+		// af.camera_cartesian2D(0, 0, 1, 1)
+		// af.set_draw_color(af.Color{1, 0, 0, 1})
+		// af.mesh_draw(mesh, 6)
+		// af.draw_quad(
+		// 	af.im,
 		// 	mesh.vertices[0], 
 		// 	mesh.vertices[1], 
 		// 	mesh.vertices[2], 
 		// 	mesh.vertices[3], 
 		// );
 
-		DrawRenderingTests()
+		draw_rendering_tests()
 
-		af.EndFrame()
+		af.end_frame()
+
+		verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
 	}
 
-	af.UnInit()
+	af.un_init()
 }
