@@ -5,15 +5,22 @@ Trying out a new API convention that might result in an API that is easier to me
 
 Common (verb)s:
 
-set_<object_>?<property> - sets data in memory or a 3Rd party API
 get_<object_>?<property> - gets data in  memory or a third party API, or initializes a struct
+    - get_color, get_transform
+set_<object_>?<property> - sets data in memory or a 3Rd party API
+    - set_color, set_transform
 
-new_<object> - allocates and initializes a struct
-free_<object> - frees something we got from a new_ method
+<object><_constructor_arg_set_name>? - a struct constructor method that doesn't allocate.
+    - vertex_2d, vertex_2d_uv
+
+new_<object> - allocates and initializes a struct. needs a corresponding free_<object> method to clean it up. Must return a pointer
+    - new_mesh() -> ^Mesh, free_mesh(m: ^Mesh)
+free_<object> - see new_<object>
 resize_<object> - reallocates the backing datastructures to a new exact size
 
 upload_<object> - sends a large amount of data to a 3rd party API, like an entire mesh to OpenGL
 draw_<object> - pushes vertices and triangles to a mesh buffer
+use_<object> - set the object that all future _<object> functions will act on
 
 
 Old convention:

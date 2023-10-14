@@ -69,6 +69,9 @@ internal_prev_mouse_position: Vec2
 internal_mouse_position: Vec2
 mouse_delta: Vec2
 
+stencil_mode: StencilMode
+
+
 // (\w+) (\*?)([\w_]+)
 
 get_time :: proc() -> f64 {
@@ -77,14 +80,14 @@ get_time :: proc() -> f64 {
 
 set_time :: proc(t: f64) {
 	glfw.SetTime(t)
-
-	glfw.SetCharCallback(nil, internal_glfw_character_callback)
 }
 
+// Short for layout_rect.width
 vw :: proc() -> f32 {
 	return layout_rect.width
 }
 
+// Short for layout_rect.height
 vh :: proc() -> f32 {
 	return layout_rect.height
 }
@@ -173,9 +176,10 @@ get_texture :: proc() -> ^Texture {
 }
 
 clear_screen :: proc(col: Color) {
-	gl.StencilMask(1)
 	gl.ClearColor(col.r, col.g, col.b, col.a)
-	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+
+	// the stencil buffer but must be cleared manually
+	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 }
 
 flush :: proc() {
@@ -301,6 +305,7 @@ begin_frame :: proc() {
 end_frame :: proc() {
 	flush()
 	use_framebuffer(nil)
+	set_stencil_mode(.Off)
 	glfw.SwapBuffers(window)
 
 	frame_end := get_time()
@@ -340,9 +345,9 @@ un_init :: proc() {
 	debug_log("Done")
 }
 
-camera_cartesian2D :: proc(x, y, sx, sy: f32) {
-	width := sx * framebuffer_rect.width
-	height := sy * framebuffer_rect.height
+camera_cartesian2D :: proc(x, y, width, height: f32) {
+	width := width * framebuffer_rect.width
+	height := height * framebuffer_rect.height
 
 	translation := Vec3{x - width / 2, y - height / 2, 0}
 	view := linalg.matrix4_translate(translation)
@@ -449,44 +454,51 @@ set_shader :: proc(shader: ^Shader) {
 	set_shader_mat4(current_shader.projection_loc, &projection)
 }
 
-stencil_begin :: proc(can_draw: bool, inverse_stencil: bool) {
+clear_stencil :: proc() {
+	gl.ClearStencil(0)
+	gl.Clear(gl.STENCIL_BUFFER_BIT)
+}
+
+StencilMode :: enum {
+	WriteOnes, // writes 0xFF where fragments appear
+	WriteZeroes, // writes 0 where fragments appear
+	DrawOverOnes, // allows fragments only where the buffer is 0xFF
+	DrawOverZeroes, // allows fragments only where the buffer is 0
+	Off, // disables the stencil
+}
+
+set_stencil_mode :: proc(mode: StencilMode) {
 	flush()
 
-	if (!can_draw) {
-		gl.ColorMask(false, false, false, false)
-	}
+	// TODO: use stencil_mode
+	stencil_mode = mode
 
-	if (inverse_stencil) {
-		gl.ClearStencil(1)
-	} else {
-		gl.ClearStencil(0)
-	}
-
-	gl.StencilMask(1)
-	gl.Clear(gl.STENCIL_BUFFER_BIT)
+	if mode == .Off {
+		gl.Disable(gl.STENCIL_TEST)
+		return;
+	} 
 
 	gl.Enable(gl.STENCIL_TEST)
+
+	// sfail, zfail, zpass. TODO: I would like more control over this later
 	gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
 
-	if (inverse_stencil) {
-		gl.StencilFunc(gl.ALWAYS, 0, 0)
-	} else {
-		gl.StencilFunc(gl.ALWAYS, 1, 1)
+	switch mode {
+	case .WriteOnes:
+		gl.StencilMask(0xFF)
+		gl.StencilFunc(gl.ALWAYS, 0xFF, 0xFF)
+	case .WriteZeroes:
+		gl.StencilMask(0xFF)
+		gl.StencilFunc(gl.ALWAYS, 0, 0xFF)
+	case .DrawOverOnes:
+		gl.StencilMask(0)
+		gl.StencilFunc(gl.EQUAL, 0, 0xFF)
+	case .DrawOverZeroes:
+		gl.StencilMask(0)
+		gl.StencilFunc(gl.EQUAL, 0xFF, 0xFF)
+	case .Off:
+		// should already be handled
 	}
-}
-
-stencil_use :: proc() {
-	flush()
-
-	gl.ColorMask(true, true, true, true)
-	gl.StencilFunc(gl.NOTEQUAL, 1, 1)
-	gl.StencilMask(0)
-}
-
-stencil_end :: proc() {
-	flush()
-
-	gl.Disable(gl.STENCIL_TEST)
 }
 
 internal_set_framebuffer_directly :: proc(framebuffer: ^Framebuffer) {
@@ -515,11 +527,11 @@ set_framebuffer :: proc(framebuffer: ^Framebuffer) {
 }
 
 
-get_vertex_2d :: proc(x, y: f32) -> Vertex {
+vertex_2d :: proc(x, y: f32) -> Vertex {
 	return Vertex{position = {x, y, 0}, uv = {x, y}}
 }
 
-get_vertex_2d_uv :: proc(x, y: f32, u, v: f32) -> Vertex {
+vertex_2d_uv :: proc(x, y: f32, u, v: f32) -> Vertex {
 	return Vertex{position = {x, y, 0}, uv = {u, v}}
 }
 
@@ -591,10 +603,10 @@ draw_quad_outline :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex, thickness
 }
 
 draw_rect :: proc(output: ^MeshBuffer, rect: Rect) {
-	v1 := get_vertex_2d_uv(rect.x0, rect.y0, 0, 0)
-	v2 := get_vertex_2d_uv(rect.x0, rect.y0 + rect.height, 0, 1)
-	v3 := get_vertex_2d_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
-	v4 := get_vertex_2d_uv(rect.x0 + rect.width, rect.y0, 1, 0)
+	v1 := vertex_2d_uv(rect.x0, rect.y0, 0, 0)
+	v2 := vertex_2d_uv(rect.x0, rect.y0 + rect.height, 0, 1)
+	v3 := vertex_2d_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
+	v4 := vertex_2d_uv(rect.x0 + rect.width, rect.y0, 1, 0)
 
 	draw_quad(output, v1, v2, v3, v4)
 }
@@ -641,7 +653,7 @@ draw_arc :: proc(
 	edge_count: int,
 ) {
 	ngon := begin_ngon(output)
-	center := get_vertex_2d(x_center, y_center)
+	center := vertex_2d(x_center, y_center)
 	extend_ngon(&ngon, center)
 
 	delta_angle := (end_angle - start_angle) / f32(edge_count)
@@ -649,7 +661,7 @@ draw_arc :: proc(
 		x := x_center + radius * math.cos(angle)
 		y := y_center + radius * math.sin(angle)
 
-		v := get_vertex_2d(x, y)
+		v := vertex_2d(x, y)
 		extend_ngon(&ngon, v)
 	}
 }
@@ -678,8 +690,8 @@ draw_arc_outline :: proc(
 		X2 := x_center + (radius + thickness) * cos_angle
 		Y2 := y_center + (radius + thickness) * sin_angle
 
-		v1 := get_vertex_2d(X1, Y1)
-		v2 := get_vertex_2d(X2, Y2)
+		v1 := vertex_2d(X1, Y1)
+		v2 := vertex_2d(X2, Y2)
 		extend_nline_strip(&nline, v1, v2)
 	}
 }
@@ -698,65 +710,6 @@ CapType :: enum {
 	Circle,
 }
 
-draw_line__draw_cap :: proc(
-	output: ^MeshBuffer,
-	x0, y0, angle, thickness: f32,
-	cap_type: CapType,
-) {
-	switch cap_type {
-	case .None:
-	// do nothing
-	case .Circle:
-		edge_count := arc_edge_count(thickness, math.PI, 64)
-		draw_arc(output, x0, y0, thickness, angle - math.PI / 2, angle + math.PI / 2, edge_count)
-	}
-}
-
-draw_line_outline__draw_cap_outline :: proc(
-	output: ^MeshBuffer,
-	x0, y0, angle, thickness: f32,
-	cap_type: CapType,
-	outline_thickness: f32,
-) {
-	switch (cap_type) {
-	case .None:
-		line_vec_x := math.cos(angle)
-		line_vec_y := math.sin(angle)
-
-		line_vec_perp_x := -line_vec_y
-		line_vec_perp_y := line_vec_x
-
-		p1_inner_x := x0 + -line_vec_perp_x * (thickness + outline_thickness)
-		p2_inner_x := x0 + line_vec_perp_x * (thickness + outline_thickness)
-		p1_inner_y := y0 + -line_vec_perp_y * (thickness + outline_thickness)
-		p2_inner_y := y0 + line_vec_perp_y * (thickness + outline_thickness)
-
-		p1_outer_x := p1_inner_x + line_vec_x * outline_thickness
-		p2_outer_x := p2_inner_x + line_vec_x * outline_thickness
-		p1_outer_y := p1_inner_y + line_vec_y * outline_thickness
-		p2_outer_y := p2_inner_y + line_vec_y * outline_thickness
-
-		draw_quad(
-			output,
-			get_vertex_2d(p1_inner_x, p1_inner_y),
-			get_vertex_2d(p1_outer_x, p1_outer_y),
-			get_vertex_2d(p2_outer_x, p2_outer_y),
-			get_vertex_2d(p2_inner_x, p2_inner_y),
-		)
-	case .Circle:
-		edge_count := arc_edge_count(thickness, math.PI, 64)
-		draw_arc_outline(
-			output,
-			x0,
-			y0,
-			thickness,
-			angle - math.PI / 2,
-			angle + math.PI / 2,
-			edge_count,
-			outline_thickness,
-		)
-	}
-}
 
 draw_line :: proc(
 	output: ^MeshBuffer,
@@ -765,6 +718,24 @@ draw_line :: proc(
 	thickness: f32,
 	cap_type: CapType,
 ) {
+	draw_cap :: proc(output: ^MeshBuffer, x0, y0, angle, thickness: f32, cap_type: CapType) {
+		switch cap_type {
+		case .None:
+		// do nothing
+		case .Circle:
+			edge_count := arc_edge_count(thickness, math.PI, 64)
+			draw_arc(
+				output,
+				x0,
+				y0,
+				thickness,
+				angle - math.PI / 2,
+				angle + math.PI / 2,
+				edge_count,
+			)
+		}
+	}
+
 	thickness := thickness
 	thickness /= 2
 
@@ -775,15 +746,15 @@ draw_line :: proc(
 	perpX := -thickness * dirY / mag
 	perpY := thickness * dirX / mag
 
-	v1 := get_vertex_2d(x0 + perpX, y0 + perpY)
-	v2 := get_vertex_2d(x0 - perpX, y0 - perpY)
-	v3 := get_vertex_2d(x1 - perpX, y1 - perpY)
-	v4 := get_vertex_2d(x1 + perpX, y1 + perpY)
+	v1 := vertex_2d(x0 + perpX, y0 + perpY)
+	v2 := vertex_2d(x0 - perpX, y0 - perpY)
+	v3 := vertex_2d(x1 - perpX, y1 - perpY)
+	v4 := vertex_2d(x1 + perpX, y1 + perpY)
 	draw_quad(output, v1, v2, v3, v4)
 
 	startAngle := math.atan2(dirY, dirX)
-	draw_line__draw_cap(output, x0, y0, startAngle - math.PI, thickness, cap_type)
-	draw_line__draw_cap(output, x1, y1, startAngle, thickness, cap_type)
+	draw_cap(output, x0, y0, startAngle - math.PI, thickness, cap_type)
+	draw_cap(output, x1, y1, startAngle, thickness, cap_type)
 }
 
 
@@ -795,6 +766,52 @@ draw_line_outline :: proc(
 	cap_type: CapType,
 	outline_thicknes: f32,
 ) {
+	draw_cap_outline :: proc(
+		output: ^MeshBuffer,
+		x0, y0, angle, thickness: f32,
+		cap_type: CapType,
+		outline_thickness: f32,
+	) {
+		switch (cap_type) {
+		case .None:
+			line_vec_x := math.cos(angle)
+			line_vec_y := math.sin(angle)
+
+			line_vec_perp_x := -line_vec_y
+			line_vec_perp_y := line_vec_x
+
+			p1_inner_x := x0 + -line_vec_perp_x * (thickness + outline_thickness)
+			p2_inner_x := x0 + line_vec_perp_x * (thickness + outline_thickness)
+			p1_inner_y := y0 + -line_vec_perp_y * (thickness + outline_thickness)
+			p2_inner_y := y0 + line_vec_perp_y * (thickness + outline_thickness)
+
+			p1_outer_x := p1_inner_x + line_vec_x * outline_thickness
+			p2_outer_x := p2_inner_x + line_vec_x * outline_thickness
+			p1_outer_y := p1_inner_y + line_vec_y * outline_thickness
+			p2_outer_y := p2_inner_y + line_vec_y * outline_thickness
+
+			draw_quad(
+				output,
+				vertex_2d(p1_inner_x, p1_inner_y),
+				vertex_2d(p1_outer_x, p1_outer_y),
+				vertex_2d(p2_outer_x, p2_outer_y),
+				vertex_2d(p2_inner_x, p2_inner_y),
+			)
+		case .Circle:
+			edge_count := arc_edge_count(thickness, math.PI, 64)
+			draw_arc_outline(
+				output,
+				x0,
+				y0,
+				thickness,
+				angle - math.PI / 2,
+				angle + math.PI / 2,
+				edge_count,
+				outline_thickness,
+			)
+		}
+	}
+
 	thickness := thickness
 	thickness /= 2
 
@@ -809,39 +826,23 @@ draw_line_outline :: proc(
 	perpYOuter := (thickness + outline_thicknes) * dirX / mag
 
 	// draw quad on one side of the line
-	vInner := get_vertex_2d_uv(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
-	vOuter := get_vertex_2d_uv(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
-	v1Inner := get_vertex_2d_uv(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
-	v1Outer := get_vertex_2d_uv(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
+	vInner := vertex_2d_uv(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
+	vOuter := vertex_2d_uv(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
+	v1Inner := vertex_2d_uv(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
+	v1Outer := vertex_2d_uv(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// draw quad on other side of the line
-	vInner = get_vertex_2d_uv(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
-	vOuter = get_vertex_2d_uv(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
-	v1Inner = get_vertex_2d_uv(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
-	v1Outer = get_vertex_2d_uv(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
+	vInner = vertex_2d_uv(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
+	vOuter = vertex_2d_uv(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
+	v1Inner = vertex_2d_uv(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
+	v1Outer = vertex_2d_uv(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// Draw both caps
 	startAngle := math.atan2(dirY, dirX)
-	draw_line_outline__draw_cap_outline(
-		output,
-		x0,
-		y0,
-		startAngle - math.PI,
-		thickness,
-		cap_type,
-		outline_thicknes,
-	)
-	draw_line_outline__draw_cap_outline(
-		output,
-		x1,
-		y1,
-		startAngle,
-		thickness,
-		cap_type,
-		outline_thicknes,
-	)
+	draw_cap_outline(output, x0, y0, startAngle - math.PI, thickness, cap_type, outline_thicknes)
+	draw_cap_outline(output, x1, y1, startAngle, thickness, cap_type, outline_thicknes)
 }
 
 

@@ -4,7 +4,7 @@ Not everything has been ported just yet
 
 TODO:
 
-- [] Stencil test
+- [x] Stencil test
 - [] Perspective camera test
 - [x] Texture test
 - [x] Keyboard input test
@@ -72,15 +72,18 @@ draw_benchmark_test :: proc() {
 	}
 
 	af.set_draw_color(af.Color{1, 0, 0, 0.1})
+	draw_random_lines(line_benchmark_line_amount, line_benchmark_thickness)
+}
 
-	for i in 0 ..< line_benchmark_line_amount {
+draw_random_lines :: proc (count: int, thickness: f32) {
+	for i in 0 ..< count {
 		x1 := af.vw() * randf()
 		y1 := af.vh() * randf()
 
 		x2 := af.vw() * randf()
 		y2 := af.vh() * randf()
 
-		af.draw_line(af.im, x1, y1, x2, y2, line_benchmark_thickness, .Circle)
+		af.draw_line(af.im, x1, y1, x2, y2, thickness, .Circle)
 	}
 }
 
@@ -89,12 +92,13 @@ fb: ^af.Framebuffer
 wCX :: 400
 wCY :: 300
 
-framabuffer_test__draw_dual_circles_center :: proc(x, y: f32) {
-	af.draw_circle(af.im, x - 100, y - 100, 200, 64)
-	af.draw_circle(af.im, x + 100, y + 100, 200, 64)
-}
-
 draw_framebuffer_test :: proc() {
+	draw_dual_circles_center :: proc(x, y: f32) {
+		af.draw_circle(af.im, x - 100, y - 100, 200, 64)
+		af.draw_circle(af.im, x + 100, y + 100, 200, 64)
+	}
+
+
 	af.use_framebuffer(fb)
 	{
 		af.clear_screen(af.Color{0, 0, 0, 0})
@@ -106,7 +110,7 @@ draw_framebuffer_test :: proc() {
 		af.set_transform(transform)
 
 		af.set_draw_color(af.Color{0, 0, 1, 1})
-		framabuffer_test__draw_dual_circles_center(wCX, wCY)
+		draw_dual_circles_center(wCX, wCY)
 
 		af.set_draw_color(af.Color{1, 1, 0, 1})
 		af.draw_rect(af.im, af.Rect{wCX, wCY, 50, 50})
@@ -195,9 +199,6 @@ draw_geometry_and_outlines_test :: proc() {
 arc_test_a: f32 = 0
 arc_test_b: f32 = 0
 
-draw_arc_test__draw_hand :: proc(x0, y0, r, angle: f32) {
-	af.draw_line(af.im, x0, y0, x0 + r * math.cos(angle), y0 + r * math.sin(angle), 15, .Circle)
-}
 
 draw_arc_test :: proc() {
 	af.set_draw_color(af.Color{1, 0, 0, 0.5})
@@ -209,13 +210,25 @@ draw_arc_test :: proc() {
 	edges :: 64 // GetEdgeCount(r, fabsf(arc_test_b - arc_test_a), 512);
 	af.draw_arc(af.im, x0, y0, r, arc_test_a, arc_test_b, edges)
 
+	draw_hand :: proc(x0, y0, r, angle: f32) {
+		af.draw_line(
+			af.im,
+			x0,
+			y0,
+			x0 + r * math.cos(angle),
+			y0 + r * math.sin(angle),
+			15,
+			.Circle,
+		)
+	}
+
 	af.set_draw_color(af.Color{0, 0, 0, 0.5})
-	draw_arc_test__draw_hand(x0, y0, r, arc_test_a)
-	draw_arc_test__draw_hand(x0, y0, r, arc_test_b)
+	draw_hand(x0, y0, r, arc_test_a)
+	draw_hand(x0, y0, r, arc_test_b)
 
 	af.set_draw_color(af.Color{0, 0, 0, 1})
 	// _font.DrawText(ctx, $"Angle a: {a}\nAngle b: {b}" + a, 16, new DrawTextOptions {
-	//     X = 0, Y = ctx.vh(), VAlign=1
+	//     X = 0, Y = ctx.height(), VAlign=1
 	// });
 
 	arc_test_a += f32(af.delta_time)
@@ -261,14 +274,53 @@ draw_texture_test :: proc() {
 	af.draw_rect(af.im, right_rect)
 }
 
-rendering_tests := []struct {
+draw_stencil_test :: proc() {
+	t += af.delta_time
+	
+	af.clear_stencil()
+
+	af.set_texture(nil)
+	af.set_draw_color(af.Color{0, 0, 0, 0})
+
+	af.set_stencil_mode(.WriteOnes)
+
+	stencil_rect_initial := af.Rect{ 0, 0, af.vw(), af.vh() }
+	stencil_rect := stencil_rect_initial
+	af.set_rect_size(&stencil_rect, stencil_rect.width / 2, stencil_rect.height / 2, 0.5, 0.5)
+	af.draw_rect(af.im, stencil_rect)
+
+	af.set_stencil_mode(.WriteZeroes)
+	af.set_rect_size(&stencil_rect, stencil_rect.width / 2, stencil_rect.height / 2, 0.5, 0.5)
+	af.draw_rect(af.im, stencil_rect)
+
+	af.set_stencil_mode(.DrawOverOnes)
+
+	draw_texture_test()
+
+	af.set_stencil_mode(.DrawOverZeroes)
+
+	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.set_texture(nil)
+	af.draw_rect(af.im, stencil_rect_initial)
+
+	af.set_stencil_mode(.Off)
+}
+
+
+RenderingTest :: struct {
 	fn:   proc(),
 	name: string,
-}{{
-		draw_benchmark_test,
-		"draw_benchmark_test",
-	}, {draw_framebuffer_test, "draw_framebuffer_test"}, {draw_arc_test, "draw_arc_test"}, {draw_geometry_and_outlines_test, "draw_geometry_and_outlines_test"}, {draw_keyboard_and_input_test, "draw_keyboard_and_input_test"}, {draw_texture_test, "draw_texture_test"}}
+}
 current_rendering_test := 0
+rendering_tests := [](RenderingTest){
+	RenderingTest{draw_benchmark_test, "draw_benchmark_test"},
+	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test"},
+	RenderingTest{draw_geometry_and_outlines_test, "draw_geometry_and_outlines_test"},
+	RenderingTest{draw_arc_test, "draw_arc_test"},
+	RenderingTest{draw_keyboard_and_input_test, "draw_keyboard_and_input_test"},
+	RenderingTest{draw_texture_test, "draw_texture_test"},
+	RenderingTest{draw_stencil_test, "draw_stencil_test"},
+}
 
 draw_rendering_tests :: proc() {
 	test_region := af.layout_rect
@@ -284,7 +336,7 @@ draw_rendering_tests :: proc() {
 	switch {
 	case af.key_just_pressed(af.KeyCode.Right):
 		current_rendering_test += 1
-		if current_rendering_test > len(rendering_tests) {
+		if current_rendering_test >= len(rendering_tests) {
 			current_rendering_test = 0
 		}
 	case af.key_just_pressed(af.KeyCode.Left):
@@ -313,10 +365,10 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 	mesh.indices[4] = 3
 	mesh.indices[5] = 0
 
-	mesh.vertices[0] = af.get_vertex_2d(-50, -50)
-	mesh.vertices[1] = af.get_vertex_2d(-50, 50)
-	mesh.vertices[2] = af.get_vertex_2d(50, 50)
-	mesh.vertices[3] = af.get_vertex_2d(50, -50)
+	mesh.vertices[0] = af.vertex_2d(-50, -50)
+	mesh.vertices[1] = af.vertex_2d(-50, 50)
+	mesh.vertices[2] = af.vertex_2d(50, 50)
+	mesh.vertices[3] = af.vertex_2d(50, -50)
 
 	af.upload_mesh(mesh, false)
 
@@ -347,7 +399,7 @@ main :: proc() {
 	test_texture_2 = af.new_texture_image(test_image, texture_settings)
 	defer af.free_texture(test_texture_2)
 
-	// mesh := GetDiagnosticMesh()
+	// mesh := GetDiagnosticMevh()
 
 	for !af.window_should_close() && !af.key_just_pressed(af.KeyCode.Escape) {
 		af.begin_frame()

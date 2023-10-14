@@ -450,11 +450,11 @@ void Flush() {
     BufferedMeshOutput_Flush(&output);
 }
 
-void SetViewProjection_Cartesian2D(float x, float y, float sx, float sy) {
+void SetViewProjection_Cartesian2D(float x, float y, float width, float height) {
     Flush();
 
-    float width = sx * framebuffer_width;
-    float height = sy * framebuffer_height;
+    float width = width * framebuffer_width;
+    float height = height * framebuffer_height;
 
     Vec3 translation = { .x = x - width / 2.f, .y = y - height / 2.f, .z = 0};
     Mat4 view = Mat4_Translation(translation);
