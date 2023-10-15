@@ -28,7 +28,8 @@ KEYBOARD_CHARS :: "\t\b\n `1234567890-=qwertyuiop[]asdfghjkl;'\\zxcvbnm,./"
 
 target_fps: int
 window: glfw.WindowHandle
-last_frame_time, delta_time: f64
+last_frame_time: f64
+delta_time: f32
 layout_rect: Rect
 
 window_rect: Rect // NOTE: x0, y0 are always zero. 
@@ -176,6 +177,8 @@ get_texture :: proc() -> ^Texture {
 }
 
 clear_screen :: proc(col: Color) {
+	flush()
+
 	gl.ClearColor(col.r, col.g, col.b, col.a)
 
 	// the stencil buffer but must be cleared manually
@@ -187,6 +190,8 @@ flush :: proc() {
 }
 
 set_layout_rect :: proc(rect: Rect, clip: bool) {
+	flush()
+
 	layout_rect = rect
 
 	if (clip) {
@@ -202,7 +207,7 @@ set_layout_rect :: proc(rect: Rect, clip: bool) {
 		gl.Disable(gl.SCISSOR_TEST)
 	}
 
-	camera_cartesian2D(rect.x0, rect.y0, 1, 1)
+	set_camera_2D(0, 0, 1, 1)
 }
 
 init :: proc(width: int, height: int, title: string) -> bool {
@@ -309,7 +314,7 @@ end_frame :: proc() {
 	glfw.SwapBuffers(window)
 
 	frame_end := get_time()
-	delta_time = frame_end - last_frame_time
+	delta_time = f32(frame_end - last_frame_time)
 
 	if (target_fps == 0) {
 		last_frame_time = frame_end
@@ -320,13 +325,13 @@ end_frame :: proc() {
 	// have the time available to do so. It should reduce the overall CPU consumption.
 
 	frame_duration := 1 / f64(target_fps)
-	time_to_next_frame := frame_duration - delta_time
+	time_to_next_frame := frame_duration - f64(delta_time)
 	if (time_to_next_frame > 0) {
 		nanoseconds := i64(time_to_next_frame * 1000000000)
 		time.sleep(time.Duration(nanoseconds))
 
 		frame_end = get_time()
-		delta_time = frame_end - last_frame_time
+		delta_time = f32(frame_end - last_frame_time)
 	}
 
 	last_frame_time = frame_end
@@ -345,9 +350,12 @@ un_init :: proc() {
 	debug_log("Done")
 }
 
-camera_cartesian2D :: proc(x, y, width, height: f32) {
-	width := width * framebuffer_rect.width
-	height := height * framebuffer_rect.height
+set_camera_2D :: proc(x, y, scale_x, scale_y: f32) {
+	x := layout_rect.x0 + x
+	y := layout_rect.y0 + y
+
+	width := scale_x * framebuffer_rect.width
+	height := scale_y * framebuffer_rect.height
 
 	translation := Vec3{x - width / 2, y - height / 2, 0}
 	view := linalg.matrix4_translate(translation)
@@ -361,11 +369,23 @@ camera_cartesian2D :: proc(x, y, width, height: f32) {
 	gl.DepthFunc(gl.LEQUAL)
 }
 
-get_look_at_mat4 :: proc(position: Vec3, target: Vec3, up: Vec3) -> Mat4 {
+set_camera_3D :: proc(pos: Vec3, rot: Quat, projection: Mat4) {
+	rot_inverse := linalg.quaternion_inverse(rot)
+	// rot_inverse := rot
+	tr := linalg.matrix4_translate(-pos)
+	rot := linalg.matrix4_from_quaternion(rot_inverse)
+	set_view(linalg.mul(rot, tr))
+
+	set_projection(projection)
+
+	gl.DepthFunc(gl.LESS)
+}
+
+get_look_at :: proc(position: Vec3, target: Vec3, up: Vec3) -> Mat4 {
 	return linalg.matrix4_look_at_f32(position, target, up)
 }
 
-get_orientation_mat4 :: proc(position: Vec3, rotation: Quat) -> Mat4 {
+get_orientation :: proc(position: Vec3, rotation: Quat) -> Mat4 {
 	view := linalg.mul(
 		linalg.matrix4_from_quaternion(rotation),
 		linalg.matrix4_translate(position),
@@ -373,31 +393,31 @@ get_orientation_mat4 :: proc(position: Vec3, rotation: Quat) -> Mat4 {
 	return view
 }
 
-get_perspective_mat4 :: proc(
-	fovy, aspect, depth_near, depth_far, center_x, center_y: f32,
-) -> Mat4 {
-	projection := linalg.matrix4_perspective_f32(fovy, aspect, depth_near, depth_far)
-	screenCenter := linalg.matrix4_translate_f32(Vec3{center_x / vw(), center_y / vh(), 0})
-	scale := linalg.matrix4_scale_f32(Vec3{-1, 1, 1})
+internal_get_layout_rect_center_offset :: proc() -> Mat4 {
+	// A translation in clipspace from the center of the framebuffer to the center of the current layout rect
+	center_x := (layout_rect.x0 + vw() * 0.5) - framebuffer_rect.width * 0.5
+	center_y := (layout_rect.y0 + vh() * 0.5) - framebuffer_rect.height * 0.5
+	center_x_clipspace := 2 * center_x / framebuffer_rect.width
+	center_y_clipspace := 2 * center_y / framebuffer_rect.height
+	screen_center := linalg.matrix4_translate(Vec3{center_x_clipspace, center_y_clipspace, 0})
 
-	return linalg.mul(linalg.mul(projection, screenCenter), scale)
+	return screen_center
 }
 
-get_orthographic_mat4 :: proc(
-	width, height, depth_near, depth_far, center_x, center_y: f32,
-) -> Mat4 {
-	projection := linalg.matrix_ortho3d_f32(
-		center_x - width * 0.5,
-		center_x + width * 0.5,
-		center_y - 0.5 * height,
-		center_y + 0.5 * height,
-		depth_near,
-		depth_far,
-	)
-	screenCenter := linalg.matrix4_translate_f32(Vec3{center_x / vw(), center_y / vh(), 0})
-	scale := linalg.matrix4_scale_f32(Vec3{-1, 1, 1})
+get_perspective :: proc(fovy, depth_near, depth_far: f32) -> Mat4 {
+	projection := linalg.matrix4_perspective(fovy, vw() / vh(), depth_near, depth_far, false)
+	center_offset := internal_get_layout_rect_center_offset()
+	return linalg.mul(center_offset, projection)
+}
 
-	return linalg.mul(linalg.mul(projection, screenCenter), scale)
+
+get_orthographic :: proc(size, depth_near, depth_far: f32) -> Mat4 {
+	ySize := size
+	xSize := size * vw() / vh()
+
+	projection := linalg.matrix_ortho3d_f32(-xSize, xSize, -ySize, ySize, depth_near, depth_far, false)
+	center_offset := internal_get_layout_rect_center_offset()
+	return linalg.mul(center_offset, projection)
 }
 
 
@@ -422,7 +442,7 @@ set_view :: proc(mat: Mat4) {
 	set_shader_mat4(current_shader.view_loc, &view)
 }
 
-set_draw_color :: proc(color: Color) {
+set_color :: proc(color: Color) {
 	flush()
 
 	draw_color = color
@@ -440,12 +460,12 @@ set_backface_culling :: proc(state: bool) {
 }
 
 set_shader :: proc(shader: ^Shader) {
+	flush()
+
 	shader := shader
 	if (shader == nil) {
 		shader = internal_shader
 	}
-
-	flush()
 
 	current_shader = shader
 	internal_shader_use(current_shader)
@@ -455,8 +475,16 @@ set_shader :: proc(shader: ^Shader) {
 }
 
 clear_stencil :: proc() {
+	flush()
+
 	gl.ClearStencil(0)
 	gl.Clear(gl.STENCIL_BUFFER_BIT)
+}
+
+clear_depth_buffer :: proc() {
+	flush()
+
+	gl.Clear(gl.DEPTH_BUFFER_BIT)
 }
 
 StencilMode :: enum {
@@ -475,8 +503,8 @@ set_stencil_mode :: proc(mode: StencilMode) {
 
 	if mode == .Off {
 		gl.Disable(gl.STENCIL_TEST)
-		return;
-	} 
+		return
+	}
 
 	gl.Enable(gl.STENCIL_TEST)
 
@@ -497,7 +525,7 @@ set_stencil_mode :: proc(mode: StencilMode) {
 		gl.StencilMask(0)
 		gl.StencilFunc(gl.EQUAL, 0xFF, 0xFF)
 	case .Off:
-		// should already be handled
+	// should already be handled
 	}
 }
 
@@ -527,11 +555,11 @@ set_framebuffer :: proc(framebuffer: ^Framebuffer) {
 }
 
 
-vertex_2d :: proc(x, y: f32) -> Vertex {
+vertex_2D :: proc(x, y: f32) -> Vertex {
 	return Vertex{position = {x, y, 0}, uv = {x, y}}
 }
 
-vertex_2d_uv :: proc(x, y: f32, u, v: f32) -> Vertex {
+vertex_2D_uv :: proc(x, y: f32, u, v: f32) -> Vertex {
 	return Vertex{position = {x, y, 0}, uv = {u, v}}
 }
 
@@ -603,10 +631,10 @@ draw_quad_outline :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex, thickness
 }
 
 draw_rect :: proc(output: ^MeshBuffer, rect: Rect) {
-	v1 := vertex_2d_uv(rect.x0, rect.y0, 0, 0)
-	v2 := vertex_2d_uv(rect.x0, rect.y0 + rect.height, 0, 1)
-	v3 := vertex_2d_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
-	v4 := vertex_2d_uv(rect.x0 + rect.width, rect.y0, 1, 0)
+	v1 := vertex_2D_uv(rect.x0, rect.y0, 0, 0)
+	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, 0, 1)
+	v3 := vertex_2D_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
+	v4 := vertex_2D_uv(rect.x0 + rect.width, rect.y0, 1, 0)
 
 	draw_quad(output, v1, v2, v3, v4)
 }
@@ -653,7 +681,7 @@ draw_arc :: proc(
 	edge_count: int,
 ) {
 	ngon := begin_ngon(output)
-	center := vertex_2d(x_center, y_center)
+	center := vertex_2D(x_center, y_center)
 	extend_ngon(&ngon, center)
 
 	delta_angle := (end_angle - start_angle) / f32(edge_count)
@@ -661,7 +689,7 @@ draw_arc :: proc(
 		x := x_center + radius * math.cos(angle)
 		y := y_center + radius * math.sin(angle)
 
-		v := vertex_2d(x, y)
+		v := vertex_2D(x, y)
 		extend_ngon(&ngon, v)
 	}
 }
@@ -690,8 +718,8 @@ draw_arc_outline :: proc(
 		X2 := x_center + (radius + thickness) * cos_angle
 		Y2 := y_center + (radius + thickness) * sin_angle
 
-		v1 := vertex_2d(X1, Y1)
-		v2 := vertex_2d(X2, Y2)
+		v1 := vertex_2D(X1, Y1)
+		v2 := vertex_2D(X2, Y2)
 		extend_nline_strip(&nline, v1, v2)
 	}
 }
@@ -746,10 +774,10 @@ draw_line :: proc(
 	perpX := -thickness * dirY / mag
 	perpY := thickness * dirX / mag
 
-	v1 := vertex_2d(x0 + perpX, y0 + perpY)
-	v2 := vertex_2d(x0 - perpX, y0 - perpY)
-	v3 := vertex_2d(x1 - perpX, y1 - perpY)
-	v4 := vertex_2d(x1 + perpX, y1 + perpY)
+	v1 := vertex_2D(x0 + perpX, y0 + perpY)
+	v2 := vertex_2D(x0 - perpX, y0 - perpY)
+	v3 := vertex_2D(x1 - perpX, y1 - perpY)
+	v4 := vertex_2D(x1 + perpX, y1 + perpY)
 	draw_quad(output, v1, v2, v3, v4)
 
 	startAngle := math.atan2(dirY, dirX)
@@ -792,10 +820,10 @@ draw_line_outline :: proc(
 
 			draw_quad(
 				output,
-				vertex_2d(p1_inner_x, p1_inner_y),
-				vertex_2d(p1_outer_x, p1_outer_y),
-				vertex_2d(p2_outer_x, p2_outer_y),
-				vertex_2d(p2_inner_x, p2_inner_y),
+				vertex_2D(p1_inner_x, p1_inner_y),
+				vertex_2D(p1_outer_x, p1_outer_y),
+				vertex_2D(p2_outer_x, p2_outer_y),
+				vertex_2D(p2_inner_x, p2_inner_y),
 			)
 		case .Circle:
 			edge_count := arc_edge_count(thickness, math.PI, 64)
@@ -826,17 +854,17 @@ draw_line_outline :: proc(
 	perpYOuter := (thickness + outline_thicknes) * dirX / mag
 
 	// draw quad on one side of the line
-	vInner := vertex_2d_uv(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
-	vOuter := vertex_2d_uv(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
-	v1Inner := vertex_2d_uv(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
-	v1Outer := vertex_2d_uv(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
+	vInner := vertex_2D_uv(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
+	vOuter := vertex_2D_uv(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
+	v1Inner := vertex_2D_uv(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
+	v1Outer := vertex_2D_uv(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// draw quad on other side of the line
-	vInner = vertex_2d_uv(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
-	vOuter = vertex_2d_uv(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
-	v1Inner = vertex_2d_uv(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
-	v1Outer = vertex_2d_uv(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
+	vInner = vertex_2D_uv(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
+	vOuter = vertex_2D_uv(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
+	v1Inner = vertex_2D_uv(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
+	v1Outer = vertex_2D_uv(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// Draw both caps

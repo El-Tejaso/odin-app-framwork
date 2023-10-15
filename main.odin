@@ -37,7 +37,7 @@ fps, current_frames: int
 
 // returns true if we ticked up
 track_fps :: proc(interval: f64) -> bool {
-	t += af.delta_time
+	t += f64(af.delta_time)
 	if (t > interval) {
 		t = 0
 		fps = int(f64(current_frames) / interval)
@@ -71,11 +71,11 @@ draw_benchmark_test :: proc() {
 		fmt.printf("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
 	}
 
-	af.set_draw_color(af.Color{1, 0, 0, 0.1})
+	af.set_color(af.Color{1, 0, 0, 0.1})
 	draw_random_lines(line_benchmark_line_amount, line_benchmark_thickness)
 }
 
-draw_random_lines :: proc (count: int, thickness: f32) {
+draw_random_lines :: proc(count: int, thickness: f32) {
 	for i in 0 ..< count {
 		x1 := af.vw() * randf()
 		y1 := af.vh() * randf()
@@ -98,38 +98,40 @@ draw_framebuffer_test :: proc() {
 		af.draw_circle(af.im, x + 100, y + 100, 200, 64)
 	}
 
-
+	layout_rect := af.layout_rect
 	af.use_framebuffer(fb)
 	{
+		af.set_layout_rect(af.framebuffer_rect, false)
 		af.clear_screen(af.Color{0, 0, 0, 0})
-		af.camera_cartesian2D(0, 0, 1, 1)
+		af.set_camera_2D(0, 0, 1, 1)
 
 		af.draw_rect(af.im, af.Rect{0, 0, 800, 600})
 
 		transform := linalg.matrix4_translate(af.Vec3{0, 0, 0})
 		af.set_transform(transform)
 
-		af.set_draw_color(af.Color{0, 0, 1, 1})
+		af.set_color(af.Color{0, 0, 1, 1})
 		draw_dual_circles_center(wCX, wCY)
 
-		af.set_draw_color(af.Color{1, 1, 0, 1})
+		af.set_color(af.Color{1, 1, 0, 1})
 		af.draw_rect(af.im, af.Rect{wCX, wCY, 50, 50})
 	}
 	af.use_framebuffer(nil)
+	af.set_layout_rect(layout_rect, false)
 
-	af.camera_cartesian2D(0, 0, 1, 1)
+	af.set_camera_2D(0, 0, 1, 1)
 
-	af.set_draw_color(af.Color{1, 0, 0, 1})
+	af.set_color(af.Color{1, 0, 0, 1})
 	rectSize :: 200
 	af.draw_rect(af.im, af.Rect{wCX - rectSize, wCY - rectSize, 2 * rectSize, 2 * rectSize})
 
 	af.set_texture(fb.texture)
-	af.set_draw_color(af.Color{1, 1, 1, 0.5})
+	af.set_color(af.Color{1, 1, 1, 0.5})
 	af.draw_rect(af.im, af.Rect{0, 0, 800, 600})
 
 	af.set_texture(nil)
 
-	af.set_draw_color(af.Color{0, 1, 0, 0.5})
+	af.set_color(af.Color{0, 1, 0, 0.5})
 	af.draw_rect_outline(af.im, af.Rect{0, 0, 800, 600}, 10)
 }
 
@@ -148,21 +150,21 @@ draw_geometry_and_outlines_test :: proc() {
 	}
 
 	for t in arc_test_cases {
-		af.set_draw_color(af.Color{1, 0, 0, 0.5})
+		af.set_color(af.Color{1, 0, 0, 0.5})
 		af.draw_arc(af.im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count)
 
-		af.set_draw_color(af.Color{0, 0, 1, 1})
+		af.set_color(af.Color{0, 0, 1, 1})
 		af.draw_arc_outline(af.im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count, t.thickness)
 	}
 
-	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.set_color(af.Color{1, 0, 0, 0.5})
 	af.draw_rect(af.im, af.Rect{20, 20, 80, 80})
-	af.set_draw_color(af.Color{0, 0, 1, 1})
+	af.set_color(af.Color{0, 0, 1, 1})
 	af.draw_rect_outline(af.im, af.Rect{20, 20, 80, 80}, 5)
 
-	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.set_color(af.Color{1, 0, 0, 0.5})
 	af.draw_circle(af.im, 500, 500, 200, 64)
-	af.set_draw_color(af.Color{0, 0, 1, 1})
+	af.set_color(af.Color{0, 0, 1, 1})
 	af.draw_circle_outline(af.im, 500, 500, 200, 64, 10)
 
 	lineSize :: 100
@@ -179,10 +181,10 @@ draw_geometry_and_outlines_test :: proc() {
 	}
 
 	for t in line_test_cases {
-		af.set_draw_color(af.Color{1, 0, 0, 0.5})
+		af.set_color(af.Color{1, 0, 0, 0.5})
 		af.draw_line(af.im, t.x0, t.y0, t.x1, t.y1, t.thickness, t.cap_type)
 
-		af.set_draw_color(af.Color{0, 0, 1, 1})
+		af.set_color(af.Color{0, 0, 1, 1})
 		af.draw_line_outline(
 			af.im,
 			t.x0,
@@ -201,7 +203,7 @@ arc_test_b: f32 = 0
 
 
 draw_arc_test :: proc() {
-	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.set_color(af.Color{1, 0, 0, 0.5})
 
 	x0 := af.vw() * 0.5
 	y0 := af.vh() * 0.5
@@ -222,11 +224,11 @@ draw_arc_test :: proc() {
 		)
 	}
 
-	af.set_draw_color(af.Color{0, 0, 0, 0.5})
+	af.set_color(af.Color{0, 0, 0, 0.5})
 	draw_hand(x0, y0, r, arc_test_a)
 	draw_hand(x0, y0, r, arc_test_b)
 
-	af.set_draw_color(af.Color{0, 0, 0, 1})
+	af.set_color(af.Color{0, 0, 0, 1})
 	// _font.DrawText(ctx, $"Angle a: {a}\nAngle b: {b}" + a, 16, new DrawTextOptions {
 	//     X = 0, Y = ctx.height(), VAlign=1
 	// });
@@ -260,9 +262,9 @@ test_texture: ^af.Texture
 test_texture_2: ^af.Texture
 
 draw_texture_test :: proc() {
-	t += af.delta_time
+	t += f64(af.delta_time)
 
-	af.set_draw_color(af.Color{1, 1, 1, 0.5})
+	af.set_color(af.Color{1, 1, 1, 0.5})
 
 	left_rect := af.Rect{20, 20, af.vw() / 2 - 40, af.vh() - 40}
 	af.set_texture(test_texture)
@@ -275,16 +277,16 @@ draw_texture_test :: proc() {
 }
 
 draw_stencil_test :: proc() {
-	t += af.delta_time
-	
+	t += f64(af.delta_time)
+
 	af.clear_stencil()
 
 	af.set_texture(nil)
-	af.set_draw_color(af.Color{0, 0, 0, 0})
+	af.set_color(af.Color{0, 0, 0, 0})
 
 	af.set_stencil_mode(.WriteOnes)
 
-	stencil_rect_initial := af.Rect{ 0, 0, af.vw(), af.vh() }
+	stencil_rect_initial := af.Rect{0, 0, af.vw(), af.vh()}
 	stencil_rect := stencil_rect_initial
 	af.set_rect_size(&stencil_rect, stencil_rect.width / 2, stencil_rect.height / 2, 0.5, 0.5)
 	af.draw_rect(af.im, stencil_rect)
@@ -299,39 +301,103 @@ draw_stencil_test :: proc() {
 
 	af.set_stencil_mode(.DrawOverZeroes)
 
-	af.set_draw_color(af.Color{1, 0, 0, 0.5})
+	af.set_color(af.Color{1, 0, 0, 0.5})
 	af.set_texture(nil)
 	af.draw_rect(af.im, stencil_rect_initial)
 
 	af.set_stencil_mode(.Off)
 }
 
+camera_mode := 0
+camera_distance : f32 = 5
+camera_rotation : f32 = 0
+draw_camera_test :: proc() {
+	mouse_pos := af.get_mouse_pos()
+
+	if af.key_just_pressed(.Space) {
+		camera_mode = (camera_mode + 1) % 2
+	}
+	// set up camera
+	projection: af.Mat4
+	deg2rad: f32 = math.PI / 180
+	if camera_mode == 0 {
+		projection = af.get_perspective(90 * deg2rad, 0.1, 50)
+	} else {
+		projection = af.get_orthographic(camera_distance, 0.1, 50)
+	}
+
+	camera_rot := linalg.quaternion_angle_axis(camera_rotation, af.Vec3{0, 1, 0})
+	camera_pos := linalg.mul(camera_rot, af.Vec3{0, 0, -camera_distance})
+	
+	af.set_camera_3D(camera_pos, camera_rot, projection)
+
+	// draw an object. for now, it is just a triangle
+	af.set_texture(nil)
+	af.set_color(af.Color{1, 0, 0, 1})
+	af.draw_triangle(af.im, af.vertex_2D(-1, -1), af.vertex_2D(1, -1), af.vertex_2D(0, 1))
+
+	speed :: 5
+
+	switch {
+	case af.key_is_down(.A):
+		camera_rotation -= af.delta_time * speed
+	case af.key_is_down(.D):
+		camera_rotation += af.delta_time * speed
+	case af.key_is_down(.S):
+		camera_distance += af.delta_time * speed
+	case af.key_is_down(.W):
+		camera_distance -= af.delta_time * speed
+	}
+
+	// crosshairs at the center for reference
+	
+	// crosshairs
+	af.clear_depth_buffer()
+	af.set_texture(nil)
+	af.set_color(af.Color{0, 0, 0, 1})
+	af.set_camera_2D(af.vw() / 2, af.vh() / 2, 1, 1)
+	size: f32 = 50
+	width: f32 = 1
+	crosshair := af.Rect{-size, -width, 2 * size, width * 2}
+	crosshair2 := af.Rect{-width, -size, width * 2, 2 * size}
+	af.draw_rect(af.im, crosshair)
+	af.draw_rect(af.im, crosshair2)
+}
 
 RenderingTest :: struct {
 	fn:   proc(),
 	name: string,
+	doc:  string,
 }
 current_rendering_test := 0
 rendering_tests := [](RenderingTest){
-	RenderingTest{draw_benchmark_test, "draw_benchmark_test"},
-	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test"},
-	RenderingTest{draw_geometry_and_outlines_test, "draw_geometry_and_outlines_test"},
-	RenderingTest{draw_arc_test, "draw_arc_test"},
-	RenderingTest{draw_keyboard_and_input_test, "draw_keyboard_and_input_test"},
-	RenderingTest{draw_texture_test, "draw_texture_test"},
-	RenderingTest{draw_stencil_test, "draw_stencil_test"},
+	RenderingTest{
+		draw_benchmark_test,
+		"draw_benchmark_test",
+		`A test that measures how fast the immediate mode is`,
+	},
+	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
+	RenderingTest{
+		draw_geometry_and_outlines_test,
+		"draw_geometry_and_outlines_test",
+		`Do the geometry and outline drawing methods work?`,
+	},
+	RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
+	RenderingTest{
+		draw_keyboard_and_input_test,
+		"draw_keyboard_and_input_test",
+		`Does keyboard input work?`,
+	},
+	RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
+	RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
+	RenderingTest{
+		draw_camera_test,
+		"draw_camera_test",
+		`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
+	},
 }
 
 draw_rendering_tests :: proc() {
-	test_region := af.layout_rect
-	af.set_rect_width(&test_region, af.vw() * 0.75, 0.6)
-	af.set_rect_height(&test_region, af.vh() * 0.75, 0.6)
-	af.set_layout_rect(test_region, false)
-
-	af.set_draw_color(af.Color{1, 0, 0, 0.5})
-	r := af.Rect{0, 0, af.vw(), af.vh()}
-	af.draw_rect_outline(af.im, r, 5)
-
 	changed_test := true
 	switch {
 	case af.key_just_pressed(af.KeyCode.Right):
@@ -351,7 +417,23 @@ draw_rendering_tests :: proc() {
 	if changed_test {
 		fmt.printf("\nTest [%d] - %s\n", current_rendering_test, tt.name)
 	}
+
+	// test region 
+	test_region := af.layout_rect
+	af.set_rect_width(&test_region, af.vw() * 0.6, 0.7)
+	af.set_rect_height(&test_region, af.vh() * 0.6, 0.7)
+	af.set_layout_rect(test_region, false)
+
+	// draw the test
+	af.set_camera_2D(0, 0, 1, 1)
 	tt.fn()
+
+	// red outline
+	af.set_layout_rect(test_region, false)
+	af.clear_depth_buffer()
+	af.set_color(af.Color{1, 0, 0, 0.5})
+	r := af.Rect{0, 0, af.vw(), af.vh()}
+	af.draw_rect_outline(af.im, r, 5)
 }
 
 // I sometimes have to use this to check if there are problems with the immmediate mode rendering
@@ -365,10 +447,10 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 	mesh.indices[4] = 3
 	mesh.indices[5] = 0
 
-	mesh.vertices[0] = af.vertex_2d(-50, -50)
-	mesh.vertices[1] = af.vertex_2d(-50, 50)
-	mesh.vertices[2] = af.vertex_2d(50, 50)
-	mesh.vertices[3] = af.vertex_2d(50, -50)
+	mesh.vertices[0] = af.vertex_2D(-50, -50)
+	mesh.vertices[1] = af.vertex_2D(-50, 50)
+	mesh.vertices[2] = af.vertex_2D(50, 50)
+	mesh.vertices[3] = af.vertex_2D(50, -50)
 
 	af.upload_mesh(mesh, false)
 
@@ -409,8 +491,8 @@ main :: proc() {
 		// af.set_transform(af.mat4_identity)
 		// af.set_view(af.mat4_identity)
 		// af.set_projection(af.mat4_identity)
-		// af.camera_cartesian2D(0, 0, 1, 1)
-		// af.set_draw_color(af.Color{1, 0, 0, 1})
+		// af.set_camera_2D(0, 0, 1, 1)
+		// af.set_color(af.Color{1, 0, 0, 1})
 		// af.mesh_draw(mesh, 6)
 		// af.draw_quad(
 		// 	af.im,

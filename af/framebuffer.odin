@@ -56,6 +56,8 @@ resize_framebuffer :: proc(fb: ^Framebuffer, width, height: int) {
 }
 
 use_framebuffer :: proc(fb: ^Framebuffer) {
+	flush()
+
 	if (fb == nil) {
 		gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 	} else {
