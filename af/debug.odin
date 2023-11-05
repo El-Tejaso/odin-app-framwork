@@ -2,12 +2,37 @@ package af
 
 import "core:fmt"
 
-debug_log :: proc(format: string, msg: ..any, loc := #caller_location, should_panic := false) {
-	fmt.printf("%s:%d:%d - \t", loc.file_path, loc.line, loc.column)
+LogSeverity :: enum {
+	Debug,
+	Info,
+	Warning,
+	FatalError,
+}
+
+debug_log :: proc(
+	format: string,
+	msg: ..any,
+	loc := #caller_location,
+	severity := LogSeverity.Debug,
+) {
+	severity_str: string
+	switch severity {
+	case .Debug:
+		severity_str = "DEBUG"
+	case .Info:
+		severity_str = "INFO"
+	case .Warning:
+		severity_str = "WARNING"
+	case .FatalError:
+		severity_str = "FATAL ERROR"
+	}
+
+
+	fmt.printf("[%s] %s:%d:%d - \t", severity_str, loc.file_path, loc.line, loc.column)
 	fmt.printf(format, ..msg)
 	fmt.printf("\n")
 
-	if should_panic {
-		panic("Exiting due to critical error")
+	if severity == .FatalError {
+		panic("Exiting due to fatal error")
 	}
 }

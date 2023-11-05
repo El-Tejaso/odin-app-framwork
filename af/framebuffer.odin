@@ -23,7 +23,7 @@ new_framebuffer :: proc(texture: ^Texture) -> ^Framebuffer {
 }
 
 resize_framebuffer :: proc(fb: ^Framebuffer, width, height: int) {
-	use_framebuffer(fb)
+	internal_use_framebuffer(fb)
 
 	resize_texture(fb.texture, width, height)
 	gl.FramebufferTexture2D(
@@ -52,10 +52,10 @@ resize_framebuffer :: proc(fb: ^Framebuffer, width, height: int) {
 		panic("error")
 	}
 
-	use_framebuffer(nil)
+	internal_use_framebuffer(nil)
 }
 
-use_framebuffer :: proc(fb: ^Framebuffer) {
+internal_use_framebuffer :: proc(fb: ^Framebuffer) {
 	flush()
 
 	if (fb == nil) {

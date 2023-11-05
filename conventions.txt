@@ -5,10 +5,11 @@ Trying out a new API convention that might result in an API that is easier to me
 
 Common (verb)s:
 
-get_<object_>?<property> - gets data in  memory or a third party API, or initializes a struct
+get_<object_>?<property> - gets data in  memory or a third party API, or initializes a struct.
+NOTE: we should prefer simply getting this value from a variable where possible, it makes the system easier to reason about
     - get_color, get_transform
 set_<object_>?<property> - sets data in memory or a 3Rd party API
-    - set_color, set_transform
+    - set_color, set_transform, set_shader, set_texture
 
 <object><_constructor_arg_set_name>? - a struct constructor method that doesn't allocate.
     - vertex_2d, vertex_2d_uv
@@ -22,6 +23,7 @@ upload_<object> - sends a large amount of data to a 3rd party API, like an entir
 draw_<object> - pushes vertices and triangles to a mesh buffer
 use_<object> - set the object that all future _<object> functions will act on
 
+initialize_<subsystem> - may have a corresponding un_initialize_<subsystem> for cleanup. (writing it as un_initialize allows the odin language server to recommend the un_initialize method as an option while writing out the initialize method)
 
 Old convention:
     (Object_)(Action)

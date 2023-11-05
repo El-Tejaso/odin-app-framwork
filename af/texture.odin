@@ -50,7 +50,7 @@ free_image :: proc(image: ^Image) {
 }
 
 upload_texture_settings :: proc(texture: ^Texture) {
-	use_texture(texture)
+	internal_use_texture(texture)
 
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, c.int(texture.filtering))
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, c.int(texture.filtering))
@@ -60,7 +60,7 @@ upload_texture_settings :: proc(texture: ^Texture) {
 }
 
 upload_texture :: proc(texture: ^Texture, width, height, num_channels: int, data: [^]byte) {
-	use_texture(texture)
+	internal_use_texture(texture)
 
 	texture.width = width
 	texture.height = height
@@ -92,32 +92,32 @@ upload_texture :: proc(texture: ^Texture, width, height, num_channels: int, data
 	}
 }
 
-new_texture_image :: proc(image: ^Image, config: Texture = DEFAULT_TEXTURE_CONFIG) -> ^Texture {
-	texture := new_clone(config)
+new_texture_from_image :: proc(image: ^Image, config: Texture = DEFAULT_TEXTURE_CONFIG) -> ^Texture {
+	texture := config
 	gl.GenTextures(1, &texture.handle)
 
-	upload_texture(texture, image.width, image.height, image.num_channels, image.data)
-	upload_texture_settings(texture)
+	upload_texture(&texture, image.width, image.height, image.num_channels, image.data)
+	upload_texture_settings(&texture)
 
 	gl.BindTexture(gl.TEXTURE_2D, 0)
-	return texture
+	return new_clone(texture)
 }
 
-new_texture_size :: proc(
+new_texture_from_size :: proc(
 	width, height: int,
 	config: Texture = DEFAULT_TEXTURE_CONFIG,
 ) -> ^Texture {
-	texture := new_clone(config)
+	texture := config
 	gl.GenTextures(1, &texture.handle)
 
-	upload_texture(texture, width, height, 4, nil)
-	upload_texture_settings(texture)
+	upload_texture(&texture, width, height, 4, nil)
+	upload_texture_settings(&texture)
 
 	gl.BindTexture(gl.TEXTURE_2D, 0)
-	return texture
+	return new_clone(texture)
 }
 
-use_texture :: proc(texture: ^Texture) {
+internal_use_texture :: proc(texture: ^Texture) {
 	gl.BindTexture(gl.TEXTURE_2D, texture.handle)
 }
 
@@ -127,14 +127,14 @@ internal_set_texture_unit :: proc(unit: int) {
 }
 
 // NOTE: this will change the currently bound OpenGL texture
-upload_texture_subregion :: proc(texture: ^Texture, rowPx, columnPx: int, sub_image: ^Image) {
-	use_texture(texture)
+upload_texture_subregion :: proc(texture: ^Texture, xOffset, yOffset: int, sub_image: ^Image) {
+	internal_use_texture(texture)
 
 	gl.TexSubImage2D(
 		gl.TEXTURE_2D,
 		0,
-		c.int(rowPx),
-		c.int(columnPx),
+		c.int(xOffset),
+		c.int(yOffset),
 		c.int(sub_image.width),
 		c.int(sub_image.height),
 		u32(texture.pixel_format),

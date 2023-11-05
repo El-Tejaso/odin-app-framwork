@@ -25,16 +25,14 @@ Mesh :: struct {
 }
 
 new_mesh :: proc(vertices_length, indices_length: c.uint) -> ^Mesh {
-	mesh := new_clone(
-		Mesh{
-			vertices = make([]Vertex, vertices_length),
-			vertices_length = vertices_length,
-			indices = make([]c.uint, indices_length),
-			indices_length = indices_length,
-		},
-	)
+	mesh := Mesh{
+		vertices = make([]Vertex, vertices_length),
+		vertices_length = vertices_length,
+		indices = make([]c.uint, indices_length),
+		indices_length = indices_length,
+	}
 
-	return mesh
+	return new_clone(mesh)
 }
 
 upload_mesh :: proc(mesh: ^Mesh, is_dynamic: bool) {

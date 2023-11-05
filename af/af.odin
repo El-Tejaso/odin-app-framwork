@@ -159,7 +159,7 @@ internal_set_texture_directly :: proc(texture: ^Texture) {
 	}
 
 	internal_set_texture_unit(gl.TEXTURE0)
-	use_texture(texture)
+	internal_use_texture(texture)
 	current_texture = texture
 }
 
@@ -170,10 +170,6 @@ set_texture :: proc(texture: ^Texture) {
 
 	flush()
 	internal_set_texture_directly(texture)
-}
-
-get_texture :: proc() -> ^Texture {
-	return current_texture
 }
 
 clear_screen :: proc(col: Color) {
@@ -189,7 +185,7 @@ flush :: proc() {
 	flush_mesh_buffer(im)
 }
 
-set_layout_rect :: proc(rect: Rect, clip: bool) {
+set_layout_rect :: proc(rect: Rect, clip := false) {
 	flush()
 
 	layout_rect = rect
@@ -210,7 +206,7 @@ set_layout_rect :: proc(rect: Rect, clip: bool) {
 	set_camera_2D(0, 0, 1, 1)
 }
 
-init :: proc(width: int, height: int, title: string) -> bool {
+initialize :: proc(width: int, height: int, title: string) -> bool {
 	debug_log("Initializing window '%s' ... ", title)
 	{
 		if (!bool(glfw.Init())) {
@@ -274,7 +270,7 @@ init :: proc(width: int, height: int, title: string) -> bool {
 
 			config := DEFAULT_TEXTURE_CONFIG
 			config.filtering = gl.NEAREST
-			white_pixel_texture = new_texture_image(&img, config)
+			white_pixel_texture = new_texture_from_image(&img, config)
 		}
 
 		debug_log(
@@ -284,7 +280,9 @@ init :: proc(width: int, height: int, title: string) -> bool {
 		)
 	}
 
-	// text_init()
+	internal_initialize_text()
+	debug_log("Text initialized [SDL2::TTF]")
+
 	return true
 }
 
@@ -309,7 +307,7 @@ begin_frame :: proc() {
 
 end_frame :: proc() {
 	flush()
-	use_framebuffer(nil)
+	internal_set_framebuffer_directly(nil)
 	set_stencil_mode(.Off)
 	glfw.SwapBuffers(window)
 
@@ -337,7 +335,7 @@ end_frame :: proc() {
 	last_frame_time = frame_end
 }
 
-un_init :: proc() {
+un_initialize :: proc() {
 	debug_log("UnInitializing...")
 
 	// free rendering resources
@@ -346,6 +344,8 @@ un_init :: proc() {
 	free_texture(white_pixel_texture)
 
 	glfw.Terminate()
+
+	internal_un_initialize_text()
 
 	debug_log("Done")
 }
@@ -532,7 +532,7 @@ set_stencil_mode :: proc(mode: StencilMode) {
 internal_set_framebuffer_directly :: proc(framebuffer: ^Framebuffer) {
 	current_framebuffer = framebuffer
 
-	use_framebuffer(framebuffer)
+	internal_use_framebuffer(framebuffer)
 	if (framebuffer == nil) {
 		internal_on_framebuffer_resize(c.int(window_rect.width), c.int(window_rect.height))
 	} else {
@@ -635,6 +635,15 @@ draw_rect :: proc(output: ^MeshBuffer, rect: Rect) {
 	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, 0, 1)
 	v3 := vertex_2D_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
 	v4 := vertex_2D_uv(rect.x0 + rect.width, rect.y0, 1, 0)
+
+	draw_quad(output, v1, v2, v3, v4)
+}
+
+draw_rect_uv :: proc(output: ^MeshBuffer, rect: Rect, uv: Rect) {
+	v1 := vertex_2D_uv(rect.x0, rect.y0, uv.x0, uv.y0,)
+	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, uv.x0, uv.y0 + uv.height,)
+	v3 := vertex_2D_uv(rect.x0 + rect.width, rect.y0 + rect.height, uv.x0 + uv.width, uv.y0 + uv.height,)
+	v4 := vertex_2D_uv(rect.x0 + rect.width, rect.y0, uv.x0 + uv.width, uv.y0)
 
 	draw_quad(output, v1, v2, v3, v4)
 }
@@ -874,6 +883,74 @@ draw_line_outline :: proc(
 }
 
 
+DrawFontTextMeasureResult :: struct {
+	width : f32
+}
+
+draw_font_text :: proc(output: ^MeshBuffer, font: ^DrawableFont, text: string, size, x, y : f32, pos : int = 0, is_measuring := false) -> DrawFontTextMeasureResult {
+	prev_texture := current_texture
+	if !is_measuring {
+		set_texture(font.texture)
+	}
+
+	pos := pos
+	init_x := x
+	x := x
+	for pos < len(text) {
+		codepoint, codepoint_size := utf8_next_rune(text, pos)
+		pos += codepoint_size
+
+		glyph_info := get_font_glyph_info(font, codepoint)
+
+		if !is_measuring {
+			draw_font_glyph(output, font, glyph_info, size, x, y)
+		}
+
+		x += glyph_info.advance_x * size
+	}
+
+	if !is_measuring {
+		set_texture(prev_texture)
+	}
+
+	return DrawFontTextMeasureResult{
+		width = x - init_x,
+	}
+}
+
+get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
+	slot := internal_font_rune_is_loaded(font, codepoint)
+	if slot == -1 {
+		flush()
+		slot = internal_font_load_rune(font, codepoint)
+	}
+
+	if slot == -1 {
+		if codepoint == '?' {
+			debug_log("Font did not contain the '?' code point, which is requried when handling unknown code points", severity=.FatalError)
+			return GlyphInfo{}
+		}
+
+		return get_font_glyph_info(font, '?')
+	}
+	
+	glyph_info := font.glyph_slots[slot]
+	return glyph_info
+}
+
+// NOTE: this function does not start using the font's texture. You will need to do that manually
+draw_font_glyph :: proc (output: ^MeshBuffer, font: ^DrawableFont, glyph_info: GlyphInfo, size, x, y : f32) {
+	rect := Rect{ 
+		x + glyph_info.offset.x * size,
+		y + glyph_info.offset.y * size,
+		glyph_info.size.x * size,
+		glyph_info.size.y * size,
+	}
+	uv := glyph_info.uv
+	draw_rect_uv(output, rect, uv)
+}
+
+
 // -------- Keyboard input --------
 
 
@@ -938,10 +1015,6 @@ internal_update_key_input :: proc() {
 	}
 }
 
-get_mouse_scroll :: proc() -> f32 {
-	return mouse_wheel_notches
-}
-
 // we are kinda just assuming these are 0, 1, 2
 mouse_button_is_down :: proc(mb: MBCode) -> bool {
 	return mouse_button_states[mb]
@@ -960,20 +1033,14 @@ mouse_button_just_released :: proc(b: MBCode) -> bool {
 }
 
 get_mouse_pos :: proc() -> Vec2 {
-	return(
-		Vec2{
-			internal_mouse_position.x - layout_rect.x0,
-			internal_mouse_position.y - layout_rect.y0,
-		} \
-	)
+	return Vec2{
+		internal_mouse_position.x - layout_rect.x0,
+		internal_mouse_position.y - layout_rect.y0,
+	} 
 }
 
 set_mouse_position :: proc(pos: Vec2) {
 	glfw.SetCursorPos(window, f64(pos.x), f64(pos.y))
-}
-
-get_mouse_delta :: proc() -> Vec2 {
-	return mouse_delta
 }
 
 internal_glfw_scroll_callback :: proc "c" (window: glfw.WindowHandle, xoffset, yoffset: f64) {

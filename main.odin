@@ -1,18 +1,15 @@
 /**
 
-Not everything has been ported just yet
-
-TODO:
+Current progress:
 
 - [x] Stencil test
-- [] Perspective camera test
+- [x] Perspective camera test
 - [x] Texture test
 - [x] Keyboard input test
-- [] Text rendering 
-	- [] code
-		- [] utf-8 parsing
-		- [] Freetype signed distance fields
-	- [] tests/examples
+- [x] Text rendering 
+	- [] Allow specifying fonts to fall back on when unicode chars are missing
+	- [] Text shaping w harfbuzz or similar
+
 - [] New audio engine
 	- [] code
 	- [] tests/examples
@@ -89,6 +86,7 @@ draw_random_lines :: proc(count: int, thickness: f32) {
 
 
 fb: ^af.Framebuffer
+monospace_font: ^af.DrawableFont
 wCX :: 400
 wCY :: 300
 
@@ -99,7 +97,7 @@ draw_framebuffer_test :: proc() {
 	}
 
 	layout_rect := af.layout_rect
-	af.use_framebuffer(fb)
+	af.set_framebuffer(fb)
 	{
 		af.set_layout_rect(af.framebuffer_rect, false)
 		af.clear_screen(af.Color{0, 0, 0, 0})
@@ -116,7 +114,7 @@ draw_framebuffer_test :: proc() {
 		af.set_color(af.Color{1, 1, 0, 1})
 		af.draw_rect(af.im, af.Rect{wCX, wCY, 50, 50})
 	}
-	af.use_framebuffer(nil)
+	af.set_framebuffer(nil)
 	af.set_layout_rect(layout_rect, false)
 
 	af.set_camera_2D(0, 0, 1, 1)
@@ -364,6 +362,36 @@ draw_camera_test :: proc() {
 	af.draw_rect(af.im, crosshair2)
 }
 
+
+
+text_test_text_worldwide_1 :: "!#$%&\"()*+,-./ 😎😎😎 💯 0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'昨夜のコンサートは最高でした уилщертхуилоыхнлойк MR Worldwide 😎😎😎 💯 💯 💯 ";
+draw_text_test :: proc () {
+	t += f64(af.delta_time)
+
+	size :: 32
+	// text := "Hello world!"
+	text : string = text_test_text_worldwide_1
+
+	af.set_color(af.Color{0, 0, 0, 1})
+	res := af.draw_font_text(af.im, monospace_font, text, size, 0, 0, is_measuring = true)
+	x : f32 = af.vw() / 2 - res.width / 2 + res.width * 0.5 * math.sin_f32(f32(t * 0.25))
+	y : f32 = size * 2
+	af.draw_font_text(af.im, monospace_font, text, size, x, y)
+
+	af.set_color(af.Color{1, 0, 0, 0.1})
+	af.set_texture(nil)
+	af.draw_rect(af.im, af.Rect{0, 0, af.vw(), af.vh()})
+
+	// draw the atlas as well
+	af.set_color(af.Color{1, 0, 0, 1})
+	af.set_texture(monospace_font.texture)
+	af.draw_rect_uv(af.im, af.Rect{0, 0, af.vw(), af.vh()}, af.Rect{0, 0, 0.25, 0.25})
+	af.draw_rect(af.im, af.Rect{0, 0, af.vw(), af.vh()})
+
+	af.set_texture(nil)
+}
+
+
 RenderingTest :: struct {
 	fn:   proc(),
 	name: string,
@@ -372,29 +400,34 @@ RenderingTest :: struct {
 current_rendering_test := 0
 rendering_tests := [](RenderingTest){
 	RenderingTest{
-		draw_benchmark_test,
-		"draw_benchmark_test",
-		`A test that measures how fast the immediate mode is`,
+		draw_text_test,
+		"draw_text_test",
+		`Does basic text rendering work? Does not test the edge-cases yet`,
 	},
-	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
-	RenderingTest{
-		draw_geometry_and_outlines_test,
-		"draw_geometry_and_outlines_test",
-		`Do the geometry and outline drawing methods work?`,
-	},
-	RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
-	RenderingTest{
-		draw_keyboard_and_input_test,
-		"draw_keyboard_and_input_test",
-		`Does keyboard input work?`,
-	},
-	RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
-	RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
-	RenderingTest{
-		draw_camera_test,
-		"draw_camera_test",
-		`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
-	},
+	// RenderingTest{
+	// 	draw_benchmark_test,
+	// 	"draw_benchmark_test",
+	// 	`A test that measures how fast the immediate mode is`,
+	// },
+	// RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
+	// RenderingTest{
+	// 	draw_geometry_and_outlines_test,
+	// 	"draw_geometry_and_outlines_test",
+	// 	`Do the geometry and outline drawing methods work?`,
+	// },
+	// RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
+	// RenderingTest{
+	// 	draw_keyboard_and_input_test,
+	// 	"draw_keyboard_and_input_test",
+	// 	`Does keyboard input work?`,
+	// },
+	// RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
+	// RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
+	// RenderingTest{
+	// 	draw_camera_test,
+	// 	"draw_camera_test",
+	// 	`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
+	// },
 }
 
 draw_rendering_tests :: proc() {
@@ -422,7 +455,7 @@ draw_rendering_tests :: proc() {
 	test_region := af.layout_rect
 	af.set_rect_width(&test_region, af.vw() * 0.6, 0.7)
 	af.set_rect_height(&test_region, af.vh() * 0.6, 0.7)
-	af.set_layout_rect(test_region, false)
+	af.set_layout_rect(test_region, clip=true)
 
 	// draw the test
 	af.set_camera_2D(0, 0, 1, 1)
@@ -458,13 +491,14 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 }
 
 main :: proc() {
-	if (!af.init(800, 600, "Testing the thing")) {
+	if (!af.initialize(800, 600, "Testing the thing")) {
 		fmt.printf("Could not initialize. rip\n")
 		return
 	}
+	defer af.un_initialize()
 
 	// init test resources
-	fb = af.new_framebuffer(af.new_texture_size(1, 1))
+	fb = af.new_framebuffer(af.new_texture_from_size(1, 1))
 	defer af.free_framebuffer(fb)
 	af.resize_framebuffer(fb, 800, 600)
 
@@ -474,12 +508,15 @@ main :: proc() {
 	texture_settings := af.DEFAULT_TEXTURE_CONFIG
 
 	texture_settings.filtering = af.TEXTURE_FILTERING_LINEAR
-	test_texture = af.new_texture_image(test_image, texture_settings)
+	test_texture = af.new_texture_from_image(test_image, texture_settings)
 	defer af.free_texture(test_texture)
 
 	texture_settings.filtering = af.TEXTURE_FILTERING_NEAREST
-	test_texture_2 = af.new_texture_image(test_image, texture_settings)
+	test_texture_2 = af.new_texture_from_image(test_image, texture_settings)
 	defer af.free_texture(test_texture_2)
+
+	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32)
+	defer af.free_font(monospace_font)
 
 	// mesh := GetDiagnosticMevh()
 
@@ -508,6 +545,4 @@ main :: proc() {
 
 		verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
 	}
-
-	af.un_init()
 }

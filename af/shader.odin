@@ -48,7 +48,7 @@ compile_shader :: proc(source: cstring, type: c.uint) -> c.uint {
 		info_log: [1024]u8
 		length: c.int
 		gl.GetShaderInfoLog(shader_handle, 1024, &length, raw_data(&info_log))
-		debug_log("ERROR when compiling shader:\n%s", info_log, should_panic = true)
+		debug_log("ERROR when compiling shader:\n%s", info_log, severity=.FatalError)
 		return 0
 	}
 
@@ -68,7 +68,7 @@ link_program :: proc(vertex_handle, fragment_handle: c.uint) -> c.uint {
 		info_log: [1024]u8
 		length: c.int
 		gl.GetProgramInfoLog(program, 1024, &length, raw_data(&info_log))
-		debug_log("ERROR when linking shader:\n%s", info_log, should_panic = true)
+		debug_log("ERROR when linking shader:\n%s", info_log, severity=.FatalError)
 		return 0
 	}
 
@@ -82,7 +82,7 @@ link_program :: proc(vertex_handle, fragment_handle: c.uint) -> c.uint {
 get_shader_uniform :: proc(shader: ^Shader, name: cstring) -> int {
 	loc := gl.GetUniformLocation(c.uint(shader.handle), name)
 	if (loc == -1) {
-		debug_log("Warning: Could not find uniform %s", name, should_panic = false)
+		debug_log("Warning: Could not find uniform %s", name, severity=.FatalError)
 	}
 
 	return int(loc)
