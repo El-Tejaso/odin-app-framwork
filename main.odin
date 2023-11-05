@@ -10,17 +10,12 @@ Current progress:
 	- [] Allow specifying fonts to fall back on when unicode chars are missing
 	- [] Text shaping w harfbuzz or similar
 
-- [] New audio engine
-	- [] code
-	- [] tests/examples
 */
 
 
 package main
 
 import "af"
-import "core:fmt"
-
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
@@ -60,12 +55,12 @@ draw_benchmark_test :: proc() {
 
 		// NOTE: this benchmark could be some deterministic fractal pattern, which would make it look a lot cooler.
 		actualToWantedRatio := f64(fps) / 60
-		line_benchmark_line_amount = int(
+		line_benchmark_line_amount = max(1, int(
 			math.ceil(actualToWantedRatio * f64(line_benchmark_line_amount)),
-		)
+		))
 
-		fmt.printf("FPS: %v with line_benchmark_line_amount %v\n", fps, line_benchmark_line_amount)
-		fmt.printf("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
+		af.debug_log("FPS: %v with line_benchmark_line_amount %v", fps, line_benchmark_line_amount)
+		af.debug_log("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
 	}
 
 	af.set_color(af.Color{1, 0, 0, 0.1})
@@ -241,17 +236,17 @@ draw_keyboard_and_input_test :: proc() {
 	pos := af.get_mouse_pos()
 	if (last_mouse_pos.x != pos.x || last_mouse_pos.y != pos.y) {
 		last_mouse_pos = pos
-		fmt.printf("The mouse just moved: %f, %f\n", pos.x, pos.y)
+		af.debug_log("The mouse just moved: %f, %f", pos.x, pos.y)
 	}
 
 	// TODO: convert to actual rendering once we implement text rendering. for now, we're just printf-ing everything
 	for key in af.KeyCode {
 		if af.key_just_pressed(key) {
-			fmt.printf("Just pressed a key: %v\n", key)
+			af.debug_log("Just pressed a key: %v", key)
 		}
 
 		if af.key_just_released(key) {
-			fmt.printf("Just released a key: %v\n", key)
+			af.debug_log("Just released a key: %v", key)
 		}
 	}
 }
@@ -404,30 +399,30 @@ rendering_tests := [](RenderingTest){
 		"draw_text_test",
 		`Does basic text rendering work? Does not test the edge-cases yet`,
 	},
-	// RenderingTest{
-	// 	draw_benchmark_test,
-	// 	"draw_benchmark_test",
-	// 	`A test that measures how fast the immediate mode is`,
-	// },
-	// RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
-	// RenderingTest{
-	// 	draw_geometry_and_outlines_test,
-	// 	"draw_geometry_and_outlines_test",
-	// 	`Do the geometry and outline drawing methods work?`,
-	// },
-	// RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
-	// RenderingTest{
-	// 	draw_keyboard_and_input_test,
-	// 	"draw_keyboard_and_input_test",
-	// 	`Does keyboard input work?`,
-	// },
-	// RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
-	// RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
-	// RenderingTest{
-	// 	draw_camera_test,
-	// 	"draw_camera_test",
-	// 	`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
-	// },
+	RenderingTest{
+		draw_benchmark_test,
+		"draw_benchmark_test",
+		`A test that measures how fast the immediate mode is`,
+	},
+	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
+	RenderingTest{
+		draw_geometry_and_outlines_test,
+		"draw_geometry_and_outlines_test",
+		`Do the geometry and outline drawing methods work?`,
+	},
+	RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
+	RenderingTest{
+		draw_keyboard_and_input_test,
+		"draw_keyboard_and_input_test",
+		`Does keyboard input work?`,
+	},
+	RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
+	RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
+	RenderingTest{
+		draw_camera_test,
+		"draw_camera_test",
+		`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
+	},
 }
 
 draw_rendering_tests :: proc() {
@@ -448,7 +443,7 @@ draw_rendering_tests :: proc() {
 	}
 	tt := rendering_tests[current_rendering_test]
 	if changed_test {
-		fmt.printf("\nTest [%d] - %s\n", current_rendering_test, tt.name)
+		af.debug_log("\nTest [%d] - %s", current_rendering_test, tt.name)
 	}
 
 	// test region 
@@ -465,6 +460,7 @@ draw_rendering_tests :: proc() {
 	af.set_layout_rect(test_region, false)
 	af.clear_depth_buffer()
 	af.set_color(af.Color{1, 0, 0, 0.5})
+	af.set_texture(nil)
 	r := af.Rect{0, 0, af.vw(), af.vh()}
 	af.draw_rect_outline(af.im, r, 5)
 }
@@ -492,7 +488,7 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 
 main :: proc() {
 	if (!af.initialize(800, 600, "Testing the thing")) {
-		fmt.printf("Could not initialize. rip\n")
+		af.debug_log("Could not initialize. rip\n")
 		return
 	}
 	defer af.un_initialize()

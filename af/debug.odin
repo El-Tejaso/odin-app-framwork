@@ -27,7 +27,7 @@ debug_log :: proc(
 		severity_str = "FATAL ERROR"
 	}
 
-
+	// this specific format when printed in the VSCode terminal will create a hyperlink to this log location
 	fmt.printf("[%s] %s:%d:%d - \t", severity_str, loc.file_path, loc.line, loc.column)
 	fmt.printf(format, ..msg)
 	fmt.printf("\n")
