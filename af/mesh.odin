@@ -25,11 +25,11 @@ Mesh :: struct {
 }
 
 new_mesh :: proc(vertices_length, indices_length: c.uint) -> ^Mesh {
-	mesh := Mesh{
-		vertices = make([]Vertex, vertices_length),
+	mesh := Mesh {
+		vertices        = make([]Vertex, vertices_length),
 		vertices_length = vertices_length,
-		indices = make([]c.uint, indices_length),
-		indices_length = indices_length,
+		indices         = make([]c.uint, indices_length),
+		indices_length  = indices_length,
 	}
 
 	return new_clone(mesh)

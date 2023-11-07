@@ -4,7 +4,7 @@ Rect :: struct {
 	x0, y0, width, height: f32,
 }
 
-set_rect_size :: proc(rect: ^Rect, new_width, new_height, px, py:f32) {
+set_rect_size :: proc(rect: ^Rect, new_width, new_height, px, py: f32) {
 	set_rect_width(rect, new_width, px)
 	set_rect_height(rect, new_height, py)
 }

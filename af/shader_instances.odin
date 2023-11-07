@@ -11,10 +11,8 @@ new_shader_default :: proc() -> ^Shader {
 		"layout(location=1) in vec2 uv;" +
 		"out vec2 uv0;" +
 		"void main(){" +
-		// "   gl_Position = vec4(position, 1) * model * view * projection;" +
-		"   gl_Position = projection * view * model * vec4(position, 1);" +
-		// "   gl_Position = projection * model * view  * vec4(position, 1);" +
-		"   uv0 = uv;" +
+		"   gl_Position = projection * view * model * vec4(position, 1);" +// "   gl_Position = vec4(position, 1) * model * view * projection;" +
+		"   uv0 = uv;" +// "   gl_Position = projection * model * view  * vec4(position, 1);" +
 		"}"
 
 	fragment_source :=
@@ -26,8 +24,7 @@ new_shader_default :: proc() -> ^Shader {
 		"void main(){" +
 		"   vec4 texColor = texture2D(sampler, uv0.xy);" +
 		"   frag_color = color * texColor;" +
-		//"   frag_color = color * vec4(1, 0, 0, 1);" +
-		"}"
+		"}"//"   frag_color = color * vec4(1, 0, 0, 1);" +
 
 	shader := new_shader(vertex_source, fragment_source)
 	return shader

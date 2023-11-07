@@ -26,6 +26,7 @@ KEYBOARD_CHARS :: "\t\b\n `1234567890-=qwertyuiop[]asdfghjkl;'\\zxcvbnm,./"
 
 // Window state
 
+window_title: string
 target_fps: int
 window: glfw.WindowHandle
 last_frame_time: f64
@@ -206,17 +207,43 @@ set_layout_rect :: proc(rect: Rect, clip := false) {
 	set_camera_2D(0, 0, 1, 1)
 }
 
-initialize :: proc(width: int, height: int, title: string) -> bool {
-	debug_log("Initializing window '%s' ... ", title)
+set_window_title :: proc(title: string) {
+	window_title = title
+	title_cstr := strings.clone_to_cstring(title)
+	glfw.SetWindowTitle(window, title_cstr)
+	delete(title_cstr)
+}
+
+iconify_window :: proc() {
+	glfw.IconifyWindow(window)
+}
+restore_window :: proc() {
+	glfw.RestoreWindow(window)
+}
+maximize_window :: proc() {
+	glfw.MaximizeWindow(window)
+}
+show_window :: proc() {
+	glfw.ShowWindow(window)
+}
+hide_window :: proc() {
+	glfw.HideWindow(window)
+}
+focus_window :: proc() {
+	glfw.FocusWindow(window)
+}
+
+initialize :: proc(width: int, height: int) -> bool {
+	debug_log("Initializing window ... ")
 	{
 		if (!bool(glfw.Init())) {
 			debug_log("glfw failed to initialize")
 			return false
 		}
 
-		current_title := strings.clone_to_cstring(title)
-		defer delete(current_title)
-		window = glfw.CreateWindow(c.int(width), c.int(height), current_title, nil, nil)
+		glfw.WindowHint(glfw.VISIBLE, 0)
+
+		window = glfw.CreateWindow(c.int(width), c.int(height), "", nil, nil)
 		if (window == nil) {
 			debug_log("glfw failed to create a window")
 			glfw.Terminate()
@@ -415,7 +442,15 @@ get_orthographic :: proc(size, depth_near, depth_far: f32) -> Mat4 {
 	ySize := size
 	xSize := size * vw() / vh()
 
-	projection := linalg.matrix_ortho3d_f32(-xSize, xSize, -ySize, ySize, depth_near, depth_far, false)
+	projection := linalg.matrix_ortho3d_f32(
+		-xSize,
+		xSize,
+		-ySize,
+		ySize,
+		depth_near,
+		depth_far,
+		false,
+	)
 	center_offset := internal_get_layout_rect_center_offset()
 	return linalg.mul(center_offset, projection)
 }
@@ -640,9 +675,14 @@ draw_rect :: proc(output: ^MeshBuffer, rect: Rect) {
 }
 
 draw_rect_uv :: proc(output: ^MeshBuffer, rect: Rect, uv: Rect) {
-	v1 := vertex_2D_uv(rect.x0, rect.y0, uv.x0, uv.y0,)
-	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, uv.x0, uv.y0 + uv.height,)
-	v3 := vertex_2D_uv(rect.x0 + rect.width, rect.y0 + rect.height, uv.x0 + uv.width, uv.y0 + uv.height,)
+	v1 := vertex_2D_uv(rect.x0, rect.y0, uv.x0, uv.y0)
+	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, uv.x0, uv.y0 + uv.height)
+	v3 := vertex_2D_uv(
+		rect.x0 + rect.width,
+		rect.y0 + rect.height,
+		uv.x0 + uv.width,
+		uv.y0 + uv.height,
+	)
 	v4 := vertex_2D_uv(rect.x0 + rect.width, rect.y0, uv.x0 + uv.width, uv.y0)
 
 	draw_quad(output, v1, v2, v3, v4)
@@ -884,10 +924,17 @@ draw_line_outline :: proc(
 
 
 DrawFontTextMeasureResult :: struct {
-	width : f32
+	width: f32,
 }
 
-draw_font_text :: proc(output: ^MeshBuffer, font: ^DrawableFont, text: string, size, x, y : f32, pos : int = 0, is_measuring := false) -> DrawFontTextMeasureResult {
+draw_font_text :: proc(
+	output: ^MeshBuffer,
+	font: ^DrawableFont,
+	text: string,
+	size, x, y: f32,
+	pos: int = 0,
+	is_measuring := false,
+) -> DrawFontTextMeasureResult {
 	prev_texture := current_texture
 	if !is_measuring {
 		set_texture(font.texture)
@@ -913,9 +960,7 @@ draw_font_text :: proc(output: ^MeshBuffer, font: ^DrawableFont, text: string, s
 		set_texture(prev_texture)
 	}
 
-	return DrawFontTextMeasureResult{
-		width = x - init_x,
-	}
+	return DrawFontTextMeasureResult{width = x - init_x}
 }
 
 get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
@@ -927,20 +972,28 @@ get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
 
 	if slot == -1 {
 		if codepoint == '?' {
-			debug_log("Font did not contain the '?' code point, which is requried when handling unknown code points", severity=.FatalError)
+			debug_log(
+				"Font did not contain the '?' code point, which is requried when handling unknown code points",
+				severity = .FatalError,
+			)
 			return GlyphInfo{}
 		}
 
 		return get_font_glyph_info(font, '?')
 	}
-	
+
 	glyph_info := font.glyph_slots[slot]
 	return glyph_info
 }
 
 // NOTE: this function does not start using the font's texture. You will need to do that manually
-draw_font_glyph :: proc (output: ^MeshBuffer, font: ^DrawableFont, glyph_info: GlyphInfo, size, x, y : f32) {
-	rect := Rect{ 
+draw_font_glyph :: proc(
+	output: ^MeshBuffer,
+	font: ^DrawableFont,
+	glyph_info: GlyphInfo,
+	size, x, y: f32,
+) {
+	rect := Rect{
 		x + glyph_info.offset.x * size,
 		y + glyph_info.offset.y * size,
 		glyph_info.size.x * size,
@@ -1033,10 +1086,12 @@ mouse_button_just_released :: proc(b: MBCode) -> bool {
 }
 
 get_mouse_pos :: proc() -> Vec2 {
-	return Vec2{
-		internal_mouse_position.x - layout_rect.x0,
-		internal_mouse_position.y - layout_rect.y0,
-	} 
+	return(
+		Vec2{
+			internal_mouse_position.x - layout_rect.x0,
+			internal_mouse_position.y - layout_rect.y0,
+		} \
+	)
 }
 
 set_mouse_position :: proc(pos: Vec2) {

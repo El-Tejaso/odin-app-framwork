@@ -92,7 +92,10 @@ upload_texture :: proc(texture: ^Texture, width, height, num_channels: int, data
 	}
 }
 
-new_texture_from_image :: proc(image: ^Image, config: Texture = DEFAULT_TEXTURE_CONFIG) -> ^Texture {
+new_texture_from_image :: proc(
+	image: ^Image,
+	config: Texture = DEFAULT_TEXTURE_CONFIG,
+) -> ^Texture {
 	texture := config
 	gl.GenTextures(1, &texture.handle)
 

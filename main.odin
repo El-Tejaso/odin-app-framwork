@@ -487,11 +487,15 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 }
 
 main :: proc() {
-	if (!af.initialize(800, 600, "Testing the thing")) {
+	if (!af.initialize(800, 600)) {
 		af.debug_log("Could not initialize. rip\n")
 		return
 	}
 	defer af.un_initialize()
+
+	af.set_window_title("Testing the thing")
+	af.maximize_window()
+	af.show_window()
 
 	// init test resources
 	fb = af.new_framebuffer(af.new_texture_from_size(1, 1))
@@ -511,7 +515,8 @@ main :: proc() {
 	test_texture_2 = af.new_texture_from_image(test_image, texture_settings)
 	defer af.free_texture(test_texture_2)
 
-	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32)
+	// texture_grid_size=4 for test purposes to test the font cache evicting
+	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32, texture_grid_size=4)
 	defer af.free_font(monospace_font)
 
 	// mesh := GetDiagnosticMevh()
