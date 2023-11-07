@@ -55,9 +55,10 @@ draw_benchmark_test :: proc() {
 
 		// NOTE: this benchmark could be some deterministic fractal pattern, which would make it look a lot cooler.
 		actualToWantedRatio := f64(fps) / 60
-		line_benchmark_line_amount = max(1, int(
-			math.ceil(actualToWantedRatio * f64(line_benchmark_line_amount)),
-		))
+		line_benchmark_line_amount = max(
+			1,
+			int(math.ceil(actualToWantedRatio * f64(line_benchmark_line_amount))),
+		)
 
 		af.debug_log("FPS: %v with line_benchmark_line_amount %v", fps, line_benchmark_line_amount)
 		af.debug_log("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
@@ -302,8 +303,8 @@ draw_stencil_test :: proc() {
 }
 
 camera_mode := 0
-camera_distance : f32 = 5
-camera_rotation : f32 = 0
+camera_distance: f32 = 5
+camera_rotation: f32 = 0
 draw_camera_test :: proc() {
 	mouse_pos := af.get_mouse_pos()
 
@@ -321,7 +322,7 @@ draw_camera_test :: proc() {
 
 	camera_rot := linalg.quaternion_angle_axis(camera_rotation, af.Vec3{0, 1, 0})
 	camera_pos := linalg.mul(camera_rot, af.Vec3{0, 0, -camera_distance})
-	
+
 	af.set_camera_3D(camera_pos, camera_rot, projection)
 
 	// draw an object. for now, it is just a triangle
@@ -343,7 +344,7 @@ draw_camera_test :: proc() {
 	}
 
 	// crosshairs at the center for reference
-	
+
 	// crosshairs
 	af.clear_depth_buffer()
 	af.set_texture(nil)
@@ -358,19 +359,18 @@ draw_camera_test :: proc() {
 }
 
 
-
-text_test_text_worldwide_1 :: "!#$%&\"()*+,-./ 😎😎😎 💯 0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'昨夜のコンサートは最高でした уилщертхуилоыхнлойк MR Worldwide 😎😎😎 💯 💯 💯 ";
-draw_text_test :: proc () {
+text_test_text_worldwide_1 :: "!#$%&\"()*+,-./ 😎😎😎 💯 0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'昨夜のコンサートは最高でした уилщертхуилоыхнлойк MR Worldwide 😎😎😎 💯 💯 💯 "
+draw_text_test :: proc() {
 	t += f64(af.delta_time)
 
 	size :: 32
 	// text := "Hello world!"
-	text : string = text_test_text_worldwide_1
+	text: string = text_test_text_worldwide_1
 
 	af.set_color(af.Color{0, 0, 0, 1})
 	res := af.draw_font_text(af.im, monospace_font, text, size, 0, 0, is_measuring = true)
-	x : f32 = af.vw() / 2 - res.width / 2 + res.width * 0.5 * math.sin_f32(f32(t * 0.25))
-	y : f32 = size * 2
+	x: f32 = af.vw() / 2 - res.width / 2 + res.width * 0.5 * math.sin_f32(f32(t * 0.25))
+	y: f32 = size * 2
 	af.draw_font_text(af.im, monospace_font, text, size, x, y)
 
 	af.set_color(af.Color{1, 0, 0, 0.1})
@@ -450,7 +450,7 @@ draw_rendering_tests :: proc() {
 	test_region := af.layout_rect
 	af.set_rect_width(&test_region, af.vw() * 0.6, 0.7)
 	af.set_rect_height(&test_region, af.vh() * 0.6, 0.7)
-	af.set_layout_rect(test_region, clip=true)
+	af.set_layout_rect(test_region, clip = true)
 
 	// draw the test
 	af.set_camera_2D(0, 0, 1, 1)
@@ -516,7 +516,7 @@ main :: proc() {
 	defer af.free_texture(test_texture_2)
 
 	// texture_grid_size=4 for test purposes to test the font cache evicting
-	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32, texture_grid_size=4)
+	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32, texture_grid_size = 4)
 	defer af.free_font(monospace_font)
 
 	// mesh := GetDiagnosticMevh()

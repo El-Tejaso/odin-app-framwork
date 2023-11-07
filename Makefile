@@ -1,7 +1,12 @@
-debug:
-	odin build . -out:out/program.exe -strict-style
-	./out/program.exe
+debug-build:
+	odin build . -out:out/debug/program.exe -strict-style -debug
 
-release:
-	odin build . -out:out/program.exe -o=speed  -strict-style
-	./out/program.exe
+debug-run: debug-build
+	out/debug/program.exe
+
+
+release-build:
+	odin build . -out:out/release/program.exe -o=speed -strict-style
+
+release-run: release-build
+	out/release/program.exe
