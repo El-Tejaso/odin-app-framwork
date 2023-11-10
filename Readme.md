@@ -26,8 +26,11 @@ I didn't want to use some random hashmap from GitHub, nor did I want to use C++.
 I am using Odin, because the language seems to be very promising - it has that C-like simplicity, but fixes a lot of the bad syntax and certain inconvenient aspects of the language. 
 The vendor packages are also very helpful for my lazy ass.
 
-The tooling is still a bit lacking, however. The language server could use some improvements though:
-- renaming variables with F2 is not possible
-- It will show a lot of false positive errors for unsaved files, almost as if it is using a less accurate algorithm to provide the red lines for saved and unsaved files
+Also, you can set up the compiler to generate pdb files, which instantly allow the program to be debugged with cppvsdbg.
 
-Despite that, it is still more fun to use than C or C++. If I had to design my own language, it would be very similar to this one.
+The language server has some rough edges, which can be worked around for now
+- No F2 rename, would be cool to have this though. 
+- It will show a lot of false positive errors for unsaved files, almost as if it is using a less accurate algorithm to provide the red lines for saved and unsaved files
+  - Turns out this is because the additional red lines are parser errors. The formatter can't format code with parser errors, but for some reason the compiler can compile code despite the parser errors. I have updated the dev environment to pass in `-strict-style` when checking errors as well as compiling, so that autoformatting can always work.
+
+Despite that, it is still more fun to use than C or C++. If I had to design my own language, I imagine it would be very similar to this one.
