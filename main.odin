@@ -16,6 +16,7 @@ Current progress:
 package main
 
 import "af"
+import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
@@ -303,8 +304,8 @@ draw_stencil_test :: proc() {
 }
 
 camera_mode := 0
-camera_distance: f32 = 5
-camera_rotation: f32 = 0
+camera_z_input: f32 = -5
+camera_x_input: f32 = 0
 draw_camera_test :: proc() {
 	mouse_pos := af.get_mouse_pos()
 
@@ -313,34 +314,46 @@ draw_camera_test :: proc() {
 	}
 	// set up camera
 	projection: af.Mat4
-	deg2rad: f32 = math.PI / 180
 	if camera_mode == 0 {
-		projection = af.get_perspective(90 * deg2rad, 0.1, 50)
+		projection = af.get_perspective(90 * af.DEG2RAD, 0.1, 50)
 	} else {
-		projection = af.get_orthographic(camera_distance, 0.1, 50)
+		projection = af.get_orthographic(camera_z_input, 0.1, 50)
 	}
 
-	camera_rot := linalg.quaternion_angle_axis(camera_rotation, af.Vec3{0, 1, 0})
-	camera_pos := linalg.mul(camera_rot, af.Vec3{0, 0, -camera_distance})
-
-	af.set_camera_3D(camera_pos, camera_rot, projection)
+	af.set_camera_3D(
+		af.Vec3{camera_x_input, 0, camera_z_input},
+		af.Vec3{0, 0, 0},
+		af.Vec3{0, 1, 0},
+		projection,
+	)
+	af.set_transform(af.MAT4_IDENTITY)
 
 	// draw an object. for now, it is just a triangle
 	af.set_texture(nil)
 	af.set_color(af.Color{1, 0, 0, 1})
-	af.draw_triangle(af.im, af.vertex_2D(-1, -1), af.vertex_2D(1, -1), af.vertex_2D(0, 1))
+	size: f32 = 5
+	af.draw_triangle(
+		af.im,
+		af.vertex_2D(-size, -size),
+		af.vertex_2D(size, -size),
+		af.vertex_2D(0, size),
+	)
+	// af.draw_circle_outline(af.im, 0, 0, 1, 64, 0.1)
 
 	speed :: 5
 
 	switch {
 	case af.key_is_down(.A):
-		camera_rotation -= af.delta_time * speed
+		camera_x_input -= af.delta_time * speed
 	case af.key_is_down(.D):
-		camera_rotation += af.delta_time * speed
+		camera_x_input += af.delta_time * speed
+	}
+
+	switch {
 	case af.key_is_down(.S):
-		camera_distance += af.delta_time * speed
+		camera_z_input -= af.delta_time * speed
 	case af.key_is_down(.W):
-		camera_distance -= af.delta_time * speed
+		camera_z_input += af.delta_time * speed
 	}
 
 	// crosshairs at the center for reference
@@ -350,12 +363,22 @@ draw_camera_test :: proc() {
 	af.set_texture(nil)
 	af.set_color(af.Color{0, 0, 0, 1})
 	af.set_camera_2D(af.vw() / 2, af.vh() / 2, 1, 1)
-	size: f32 = 50
+	size = 50
 	width: f32 = 1
 	crosshair := af.Rect{-size, -width, 2 * size, width * 2}
 	crosshair2 := af.Rect{-width, -size, width * 2, 2 * size}
 	af.draw_rect(af.im, crosshair)
 	af.draw_rect(af.im, crosshair2)
+
+	af.draw_font_text(
+		af.im,
+		monospace_font,
+		fmt.tprintf("%v, %v", camera_x_input, camera_z_input),
+		32,
+		-af.vw() / 2 + 10,
+		0,
+	)
+
 }
 
 
@@ -445,6 +468,12 @@ draw_rendering_tests :: proc() {
 	if changed_test {
 		af.debug_log("\nTest [%d] - %s", current_rendering_test, tt.name)
 	}
+
+	// draw label
+	af.set_color({0, 0, 0, 1})
+	af.set_texture(nil)
+	text_size :: 32
+	af.draw_font_text(af.im, monospace_font, tt.name, text_size, 10, af.vh() - text_size - 10)
 
 	// test region 
 	test_region := af.layout_rect
@@ -543,7 +572,7 @@ main :: proc() {
 		draw_rendering_tests()
 
 		af.end_frame()
-
 		verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
+		free_all(context.temp_allocator)
 	}
 }

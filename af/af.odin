@@ -12,6 +12,9 @@ import "vendor:glfw"
 
 Mat4 :: linalg.Matrix4f32
 MAT4_IDENTITY :: linalg.MATRIX4F32_IDENTITY
+QUAT_IDENTITY :: linalg.QUATERNIONF32_IDENTITY
+DEG2RAD :: math.PI / 180
+RAD2DEG :: 180 / math.PI
 
 Color :: linalg.Vector4f32
 Vec4 :: linalg.Vector4f32
@@ -204,6 +207,7 @@ set_layout_rect :: proc(rect: Rect, clip := false) {
 		gl.Disable(gl.SCISSOR_TEST)
 	}
 
+	set_transform(MAT4_IDENTITY)
 	set_camera_2D(0, 0, 1, 1)
 }
 
@@ -396,13 +400,9 @@ set_camera_2D :: proc(x, y, scale_x, scale_y: f32) {
 	gl.DepthFunc(gl.LEQUAL)
 }
 
-set_camera_3D :: proc(pos: Vec3, rot: Quat, projection: Mat4) {
-	rot_inverse := linalg.quaternion_inverse(rot)
-	// rot_inverse := rot
-	tr := linalg.matrix4_translate(-pos)
-	rot := linalg.matrix4_from_quaternion(rot_inverse)
-	set_view(linalg.mul(rot, tr))
-
+set_camera_3D :: proc(eye, target, up: Vec3, projection: Mat4) {
+	view := linalg.matrix4_look_at_f32(eye, target, up, flip_z_axis = false)
+	set_view(view)
 	set_projection(projection)
 
 	gl.DepthFunc(gl.LESS)
@@ -445,8 +445,8 @@ get_orthographic :: proc(size, depth_near, depth_far: f32) -> Mat4 {
 	projection := linalg.matrix_ortho3d_f32(
 		-xSize,
 		xSize,
-		-ySize,
 		ySize,
+		-ySize,
 		depth_near,
 		depth_far,
 		false,
@@ -788,12 +788,22 @@ CapType :: enum {
 }
 
 
+// TODO: overloads
+draw_line_vec2 :: proc(
+	output: ^MeshBuffer,
+	v0, v1: Vec2,
+	thickness: f32 = 1,
+	cap_type := CapType.None,
+) {
+	draw_line(output, v0.x, v0.y, v1.x, v1.y, thickness, cap_type)
+}
+
 draw_line :: proc(
 	output: ^MeshBuffer,
 	x0, y0: f32,
 	x1, y1: f32,
-	thickness: f32,
-	cap_type: CapType,
+	thickness: f32 = 1,
+	cap_type := CapType.None,
 ) {
 	draw_cap :: proc(output: ^MeshBuffer, x0, y0, angle, thickness: f32, cap_type: CapType) {
 		switch cap_type {
