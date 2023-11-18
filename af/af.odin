@@ -750,7 +750,8 @@ draw_arc :: proc(
 
 draw_arc_outline :: proc(
 	output: ^MeshBuffer,
-	x_center, y_center, radius, start_angle, end_angle: f32,
+	center: Vec2,
+	radius, start_angle, end_angle: f32,
 	edge_count: int,
 	thickness: f32,
 ) {
@@ -765,14 +766,14 @@ draw_arc_outline :: proc(
 		sin_angle := math.sin(angle)
 		cos_angle := math.cos(angle)
 
-		X1 := x_center + radius * cos_angle
-		Y1 := y_center + radius * sin_angle
+		p1 := Vec2{center.x + radius * cos_angle, center.y + radius * sin_angle}
+		p2 := Vec2{
+			center.x + (radius + thickness) * cos_angle,
+			center.y + (radius + thickness) * sin_angle,
+		}
 
-		X2 := x_center + (radius + thickness) * cos_angle
-		Y2 := y_center + (radius + thickness) * sin_angle
-
-		v1 := vertex_2D({X1, Y1})
-		v2 := vertex_2D({X2, Y2})
+		v1 := vertex_2D(p1)
+		v2 := vertex_2D(p2)
 		extend_nline_strip(&nline, v1, v2)
 	}
 }
@@ -781,8 +782,14 @@ draw_circle :: proc(output: ^MeshBuffer, center: Vec2, r: f32, edges: int) {
 	draw_arc(output, center, r, 0, math.TAU, edges)
 }
 
-draw_circle_outline :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int, thickness: f32) {
-	draw_arc_outline(output, x0, y0, r, 0, math.TAU, edges, thickness)
+draw_circle_outline :: proc(
+	output: ^MeshBuffer,
+	center: Vec2,
+	r: f32,
+	edges: int,
+	thickness: f32,
+) {
+	draw_arc_outline(output, center, r, 0, math.TAU, edges, thickness)
 }
 
 
@@ -829,49 +836,41 @@ draw_line :: proc(
 
 draw_line_outline :: proc(
 	output: ^MeshBuffer,
-	x0, y0: f32,
-	x1, y1: f32,
+	p0, p1: Vec2,
 	thickness: f32,
 	cap_type: CapType,
-	outline_thicknes: f32,
+	outline_thickness: f32,
 ) {
 	draw_cap_outline :: proc(
 		output: ^MeshBuffer,
-		x0, y0, angle, thickness: f32,
+		center: Vec2,
+		angle, thickness: f32,
 		cap_type: CapType,
 		outline_thickness: f32,
 	) {
 		switch (cap_type) {
 		case .None:
-			line_vec_x := math.cos(angle)
-			line_vec_y := math.sin(angle)
+			line_vec := Vec2{math.cos(angle), math.sin(angle)}
+			line_vec_perp := Vec2{-line_vec.y, line_vec.x}
 
-			line_vec_perp_x := -line_vec_y
-			line_vec_perp_y := line_vec_x
+			p1_inner := center - line_vec_perp * (thickness + outline_thickness)
+			p2_inner := center + line_vec_perp * (thickness + outline_thickness)
 
-			p1_inner_x := x0 + -line_vec_perp_x * (thickness + outline_thickness)
-			p2_inner_x := x0 + line_vec_perp_x * (thickness + outline_thickness)
-			p1_inner_y := y0 + -line_vec_perp_y * (thickness + outline_thickness)
-			p2_inner_y := y0 + line_vec_perp_y * (thickness + outline_thickness)
-
-			p1_outer_x := p1_inner_x + line_vec_x * outline_thickness
-			p2_outer_x := p2_inner_x + line_vec_x * outline_thickness
-			p1_outer_y := p1_inner_y + line_vec_y * outline_thickness
-			p2_outer_y := p2_inner_y + line_vec_y * outline_thickness
+			p1_outer := p1_inner + line_vec * outline_thickness
+			p2_outer := p2_inner + line_vec * outline_thickness
 
 			draw_quad(
 				output,
-				vertex_2D({p1_inner_x, p1_inner_y}),
-				vertex_2D({p1_outer_x, p1_outer_y}),
-				vertex_2D({p2_outer_x, p2_outer_y}),
-				vertex_2D({p2_inner_x, p2_inner_y}),
+				vertex_2D(p1_inner),
+				vertex_2D(p1_outer),
+				vertex_2D(p2_outer),
+				vertex_2D(p2_inner),
 			)
 		case .Circle:
 			edge_count := arc_edge_count(thickness, math.PI, 64)
 			draw_arc_outline(
 				output,
-				x0,
-				y0,
+				center,
 				thickness,
 				angle - math.PI / 2,
 				angle + math.PI / 2,
@@ -884,34 +883,33 @@ draw_line_outline :: proc(
 	thickness := thickness
 	thickness /= 2
 
-	dirX := x1 - x0
-	dirY := y1 - y0
-	mag := math.sqrt(dirX * dirX + dirY * dirY)
+	dir := p1 - p0
+	mag := linalg.length(dir)
 
-	perpXInner := -(thickness) * dirY / mag
-	perpYInner := (thickness) * dirX / mag
-
-	perpXOuter := -(thickness + outline_thicknes) * dirY / mag
-	perpYOuter := (thickness + outline_thicknes) * dirX / mag
+	perp_inner := Vec2{-thickness * dir.y / mag, thickness * dir.x / mag}
+	perp_outer := Vec2{
+		-(thickness + outline_thickness) * dir.y / mag,
+		(thickness + outline_thickness) * dir.x / mag,
+	}
 
 	// draw quad on one side of the line
-	vInner := vertex_2D_uv({x0 + perpXInner, y0 + perpYInner}, {perpXInner, perpYInner})
-	vOuter := vertex_2D_uv({x0 + perpXOuter, y0 + perpYOuter}, {perpXOuter, perpYOuter})
-	v1Inner := vertex_2D_uv({x1 + perpXInner, y1 + perpYInner}, {perpXInner, perpYInner})
-	v1Outer := vertex_2D_uv({x1 + perpXOuter, y1 + perpYOuter}, {perpXOuter, perpYOuter})
+	vInner := vertex_2D_uv(p0 + perp_inner, perp_inner)
+	vOuter := vertex_2D_uv(p0 + perp_outer, perp_outer)
+	v1Inner := vertex_2D_uv(p1 + perp_inner, perp_inner)
+	v1Outer := vertex_2D_uv(p1 + perp_outer, perp_outer)
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// draw quad on other side of the line
-	vInner = vertex_2D_uv({x0 - perpXInner, y0 - perpYInner}, {-perpXInner, -perpYInner})
-	vOuter = vertex_2D_uv({x0 - perpXOuter, y0 - perpYOuter}, {perpXOuter, perpYOuter})
-	v1Inner = vertex_2D_uv({x1 - perpXInner, y1 - perpYInner}, {-perpXInner, -perpYInner})
-	v1Outer = vertex_2D_uv({x1 - perpXOuter, y1 - perpYOuter}, {-perpXOuter, -perpYOuter})
+	vInner = vertex_2D_uv(p0 - perp_inner, -perp_inner)
+	vOuter = vertex_2D_uv(p0 - perp_outer, -perp_outer)
+	v1Inner = vertex_2D_uv(p1 - perp_inner, -perp_inner)
+	v1Outer = vertex_2D_uv(p1 - perp_outer, -perp_outer)
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// Draw both caps
-	startAngle := math.atan2(dirY, dirX)
-	draw_cap_outline(output, x0, y0, startAngle - math.PI, thickness, cap_type, outline_thicknes)
-	draw_cap_outline(output, x1, y1, startAngle, thickness, cap_type, outline_thicknes)
+	startAngle := math.atan2(dir.y, dir.x)
+	draw_cap_outline(output, p0, startAngle - math.PI, thickness, cap_type, outline_thickness)
+	draw_cap_outline(output, p1, startAngle, thickness, cap_type, outline_thickness)
 }
 
 

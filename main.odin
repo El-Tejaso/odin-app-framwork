@@ -149,7 +149,7 @@ draw_geometry_and_outlines_test :: proc() {
 		af.draw_arc(af.im, {t.x, t.y}, t.r, t.a1, t.a2, t.edge_count)
 
 		af.set_draw_color(af.Color{0, 0, 1, 1})
-		af.draw_arc_outline(af.im, t.x, t.y, t.r, t.a1, t.a2, t.edge_count, t.thickness)
+		af.draw_arc_outline(af.im, {t.x, t.y}, t.r, t.a1, t.a2, t.edge_count, t.thickness)
 	}
 
 	af.set_draw_color(af.Color{1, 0, 0, 0.5})
@@ -160,7 +160,7 @@ draw_geometry_and_outlines_test :: proc() {
 	af.set_draw_color(af.Color{1, 0, 0, 0.5})
 	af.draw_circle(af.im, {500, 500}, 200, 64)
 	af.set_draw_color(af.Color{0, 0, 1, 1})
-	af.draw_circle_outline(af.im, 500, 500, 200, 64, 10)
+	af.draw_circle_outline(af.im, {500, 500}, 200, 64, 10)
 
 	lineSize :: 100
 
@@ -182,10 +182,8 @@ draw_geometry_and_outlines_test :: proc() {
 		af.set_draw_color(af.Color{0, 0, 1, 1})
 		af.draw_line_outline(
 			af.im,
-			t.x0,
-			t.y0,
-			t.x1,
-			t.y1,
+			{t.x0, t.y0},
+			{t.x1, t.y1},
 			t.thickness,
 			t.cap_type,
 			t.outline_thickness,
