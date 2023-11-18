@@ -156,7 +156,7 @@ internal_on_framebuffer_resize :: proc(width, height: c.int) {
 }
 
 
-internal_set_texture_directly :: proc(texture: ^Texture) {
+internal_set_draw_texture_directly :: proc(texture: ^Texture) {
 	texture := texture
 	if (texture == nil) {
 		texture = white_pixel_texture
@@ -167,13 +167,25 @@ internal_set_texture_directly :: proc(texture: ^Texture) {
 	current_texture = texture
 }
 
-set_texture :: proc(texture: ^Texture) {
+set_draw_texture :: proc(texture: ^Texture) {
 	if (texture == current_texture) {
 		return
 	}
 
 	flush()
-	internal_set_texture_directly(texture)
+	internal_set_draw_texture_directly(texture)
+}
+
+set_draw_color :: proc(color: Color) {
+	flush()
+
+	draw_color = color
+	set_shader_vec4(current_shader.color_loc, draw_color)
+}
+
+set_draw_params :: proc(color: Color = Color{0, 0, 0, 0}, texture: ^Texture = nil) {
+	set_draw_color(color)
+	set_draw_texture(texture)
 }
 
 clear_screen :: proc(col: Color) {
@@ -328,7 +340,7 @@ begin_frame :: proc() {
 	window_rect.height = f32(h)
 
 	set_transform(linalg.MATRIX4F32_IDENTITY)
-	internal_set_texture_directly(nil)
+	internal_set_draw_texture_directly(nil)
 	internal_set_framebuffer_directly(nil)
 
 	set_layout_rect(window_rect, false)
@@ -477,13 +489,6 @@ set_view :: proc(mat: Mat4) {
 	set_shader_mat4(current_shader.view_loc, &view)
 }
 
-set_color :: proc(color: Color) {
-	flush()
-
-	draw_color = color
-	set_shader_vec4(current_shader.color_loc, draw_color)
-}
-
 set_backface_culling :: proc(state: bool) {
 	flush()
 
@@ -590,12 +595,12 @@ set_framebuffer :: proc(framebuffer: ^Framebuffer) {
 }
 
 
-vertex_2D :: proc(x, y: f32) -> Vertex {
-	return Vertex{position = {x, y, 0}, uv = {x, y}}
+vertex_2D :: proc(pos: Vec2) -> Vertex {
+	return Vertex{position = {pos.x, pos.y, 0}, uv = {pos.x, pos.y}}
 }
 
-vertex_2D_uv :: proc(x, y: f32, u, v: f32) -> Vertex {
-	return Vertex{position = {x, y, 0}, uv = {u, v}}
+vertex_2D_uv :: proc(pos: Vec2, uv: Vec2) -> Vertex {
+	return Vertex{position = {pos.x, pos.y, 0}, uv = uv}
 }
 
 draw_triangle :: proc(output: ^MeshBuffer, v1, v2, v3: Vertex) {
@@ -666,24 +671,22 @@ draw_quad_outline :: proc(output: ^MeshBuffer, v1, v2, v3, v4: Vertex, thickness
 }
 
 draw_rect :: proc(output: ^MeshBuffer, rect: Rect) {
-	v1 := vertex_2D_uv(rect.x0, rect.y0, 0, 0)
-	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, 0, 1)
-	v3 := vertex_2D_uv(rect.x0 + rect.width, rect.y0 + rect.height, 1, 1)
-	v4 := vertex_2D_uv(rect.x0 + rect.width, rect.y0, 1, 0)
+	v1 := vertex_2D_uv({rect.x0, rect.y0}, {0, 0})
+	v2 := vertex_2D_uv({rect.x0, rect.y0 + rect.height}, {0, 1})
+	v3 := vertex_2D_uv({rect.x0 + rect.width, rect.y0 + rect.height}, {1, 1})
+	v4 := vertex_2D_uv({rect.x0 + rect.width, rect.y0}, {1, 0})
 
 	draw_quad(output, v1, v2, v3, v4)
 }
 
 draw_rect_uv :: proc(output: ^MeshBuffer, rect: Rect, uv: Rect) {
-	v1 := vertex_2D_uv(rect.x0, rect.y0, uv.x0, uv.y0)
-	v2 := vertex_2D_uv(rect.x0, rect.y0 + rect.height, uv.x0, uv.y0 + uv.height)
+	v1 := vertex_2D_uv({rect.x0, rect.y0}, {uv.x0, uv.y0})
+	v2 := vertex_2D_uv({rect.x0, rect.y0 + rect.height}, {uv.x0, uv.y0 + uv.height})
 	v3 := vertex_2D_uv(
-		rect.x0 + rect.width,
-		rect.y0 + rect.height,
-		uv.x0 + uv.width,
-		uv.y0 + uv.height,
+		{rect.x0 + rect.width, rect.y0 + rect.height},
+		{uv.x0 + uv.width, uv.y0 + uv.height},
 	)
-	v4 := vertex_2D_uv(rect.x0 + rect.width, rect.y0, uv.x0 + uv.width, uv.y0)
+	v4 := vertex_2D_uv({rect.x0 + rect.width, rect.y0}, {uv.x0 + uv.width, uv.y0})
 
 	draw_quad(output, v1, v2, v3, v4)
 }
@@ -726,19 +729,20 @@ arc_edge_count :: proc(
 
 draw_arc :: proc(
 	output: ^MeshBuffer,
-	x_center, y_center, radius, start_angle, end_angle: f32,
+	center: Vec2,
+	radius, start_angle, end_angle: f32,
 	edge_count: int,
 ) {
 	ngon := begin_ngon(output)
-	center := vertex_2D(x_center, y_center)
-	extend_ngon(&ngon, center)
+	center_vertex := vertex_2D(center)
+	extend_ngon(&ngon, center_vertex)
 
 	delta_angle := (end_angle - start_angle) / f32(edge_count)
 	for angle := end_angle; angle > start_angle - delta_angle + 0.001; angle -= delta_angle {
-		x := x_center + radius * math.cos(angle)
-		y := y_center + radius * math.sin(angle)
+		x := center.x + radius * math.cos(angle)
+		y := center.y + radius * math.sin(angle)
 
-		v := vertex_2D(x, y)
+		v := vertex_2D({x, y})
 		extend_ngon(&ngon, v)
 	}
 }
@@ -767,14 +771,14 @@ draw_arc_outline :: proc(
 		X2 := x_center + (radius + thickness) * cos_angle
 		Y2 := y_center + (radius + thickness) * sin_angle
 
-		v1 := vertex_2D(X1, Y1)
-		v2 := vertex_2D(X2, Y2)
+		v1 := vertex_2D({X1, Y1})
+		v2 := vertex_2D({X2, Y2})
 		extend_nline_strip(&nline, v1, v2)
 	}
 }
 
-draw_circle :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int) {
-	draw_arc(output, x0, y0, r, 0, math.TAU, edges)
+draw_circle :: proc(output: ^MeshBuffer, center: Vec2, r: f32, edges: int) {
+	draw_arc(output, center, r, 0, math.TAU, edges)
 }
 
 draw_circle_outline :: proc(output: ^MeshBuffer, x0, y0, r: f32, edges: int, thickness: f32) {
@@ -787,61 +791,39 @@ CapType :: enum {
 	Circle,
 }
 
-
-// TODO: overloads
-draw_line_vec2 :: proc(
-	output: ^MeshBuffer,
-	v0, v1: Vec2,
-	thickness: f32 = 1,
-	cap_type := CapType.None,
-) {
-	draw_line(output, v0.x, v0.y, v1.x, v1.y, thickness, cap_type)
-}
-
 draw_line :: proc(
 	output: ^MeshBuffer,
-	x0, y0: f32,
-	x1, y1: f32,
+	p0, p1: Vec2,
 	thickness: f32 = 1,
 	cap_type := CapType.None,
 ) {
-	draw_cap :: proc(output: ^MeshBuffer, x0, y0, angle, thickness: f32, cap_type: CapType) {
+	draw_cap :: proc(output: ^MeshBuffer, pos: Vec2, angle, thickness: f32, cap_type: CapType) {
 		switch cap_type {
 		case .None:
 		// do nothing
 		case .Circle:
 			edge_count := arc_edge_count(thickness, math.PI, 64)
-			draw_arc(
-				output,
-				x0,
-				y0,
-				thickness,
-				angle - math.PI / 2,
-				angle + math.PI / 2,
-				edge_count,
-			)
+			draw_arc(output, pos, thickness, angle - math.PI / 2, angle + math.PI / 2, edge_count)
 		}
 	}
 
 	thickness := thickness
 	thickness /= 2
 
-	dirX := x1 - x0
-	dirY := y1 - y0
-	mag := math.sqrt(dirX * dirX + dirY * dirY)
+	dir := p1 - p0
+	mag := linalg.length(dir)
 
-	perpX := -thickness * dirY / mag
-	perpY := thickness * dirX / mag
+	perp := Vec2{-thickness * dir.y / mag, thickness * dir.x / mag}
 
-	v1 := vertex_2D(x0 + perpX, y0 + perpY)
-	v2 := vertex_2D(x0 - perpX, y0 - perpY)
-	v3 := vertex_2D(x1 - perpX, y1 - perpY)
-	v4 := vertex_2D(x1 + perpX, y1 + perpY)
+	v1 := vertex_2D(p0 + perp)
+	v2 := vertex_2D(p0 - perp)
+	v3 := vertex_2D(p1 - perp)
+	v4 := vertex_2D(p1 + perp)
 	draw_quad(output, v1, v2, v3, v4)
 
-	startAngle := math.atan2(dirY, dirX)
-	draw_cap(output, x0, y0, startAngle - math.PI, thickness, cap_type)
-	draw_cap(output, x1, y1, startAngle, thickness, cap_type)
+	startAngle := math.atan2(dir.y, dir.x)
+	draw_cap(output, p0, startAngle - math.PI, thickness, cap_type)
+	draw_cap(output, p1, startAngle, thickness, cap_type)
 }
 
 
@@ -879,10 +861,10 @@ draw_line_outline :: proc(
 
 			draw_quad(
 				output,
-				vertex_2D(p1_inner_x, p1_inner_y),
-				vertex_2D(p1_outer_x, p1_outer_y),
-				vertex_2D(p2_outer_x, p2_outer_y),
-				vertex_2D(p2_inner_x, p2_inner_y),
+				vertex_2D({p1_inner_x, p1_inner_y}),
+				vertex_2D({p1_outer_x, p1_outer_y}),
+				vertex_2D({p2_outer_x, p2_outer_y}),
+				vertex_2D({p2_inner_x, p2_inner_y}),
 			)
 		case .Circle:
 			edge_count := arc_edge_count(thickness, math.PI, 64)
@@ -913,17 +895,17 @@ draw_line_outline :: proc(
 	perpYOuter := (thickness + outline_thicknes) * dirX / mag
 
 	// draw quad on one side of the line
-	vInner := vertex_2D_uv(x0 + perpXInner, y0 + perpYInner, perpXInner, perpYInner)
-	vOuter := vertex_2D_uv(x0 + perpXOuter, y0 + perpYOuter, perpXOuter, perpYOuter)
-	v1Inner := vertex_2D_uv(x1 + perpXInner, y1 + perpYInner, perpXInner, perpYInner)
-	v1Outer := vertex_2D_uv(x1 + perpXOuter, y1 + perpYOuter, perpXOuter, perpYOuter)
+	vInner := vertex_2D_uv({x0 + perpXInner, y0 + perpYInner}, {perpXInner, perpYInner})
+	vOuter := vertex_2D_uv({x0 + perpXOuter, y0 + perpYOuter}, {perpXOuter, perpYOuter})
+	v1Inner := vertex_2D_uv({x1 + perpXInner, y1 + perpYInner}, {perpXInner, perpYInner})
+	v1Outer := vertex_2D_uv({x1 + perpXOuter, y1 + perpYOuter}, {perpXOuter, perpYOuter})
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// draw quad on other side of the line
-	vInner = vertex_2D_uv(x0 - perpXInner, y0 - perpYInner, -perpXInner, -perpYInner)
-	vOuter = vertex_2D_uv(x0 - perpXOuter, y0 - perpYOuter, perpXOuter, perpYOuter)
-	v1Inner = vertex_2D_uv(x1 - perpXInner, y1 - perpYInner, -perpXInner, -perpYInner)
-	v1Outer = vertex_2D_uv(x1 - perpXOuter, y1 - perpYOuter, -perpXOuter, -perpYOuter)
+	vInner = vertex_2D_uv({x0 - perpXInner, y0 - perpYInner}, {-perpXInner, -perpYInner})
+	vOuter = vertex_2D_uv({x0 - perpXOuter, y0 - perpYOuter}, {perpXOuter, perpYOuter})
+	v1Inner = vertex_2D_uv({x1 - perpXInner, y1 - perpYInner}, {-perpXInner, -perpYInner})
+	v1Outer = vertex_2D_uv({x1 - perpXOuter, y1 - perpYOuter}, {-perpXOuter, -perpYOuter})
 	draw_quad(output, vInner, vOuter, v1Outer, v1Inner)
 
 	// Draw both caps
@@ -941,33 +923,34 @@ draw_font_text :: proc(
 	output: ^MeshBuffer,
 	font: ^DrawableFont,
 	text: string,
-	size, x, y: f32,
-	pos: int = 0,
+	size: f32,
+	pos: Vec2,
+	str_pos: int = 0,
 	is_measuring := false,
 ) -> DrawFontTextMeasureResult {
 	prev_texture := current_texture
 	if !is_measuring {
-		set_texture(font.texture)
+		set_draw_texture(font.texture)
 	}
 
-	pos := pos
-	init_x := x
-	x := x
-	for pos < len(text) {
-		codepoint, codepoint_size := utf8_next_rune(text, pos)
-		pos += codepoint_size
+	str_pos := str_pos
+	init_x := pos.x
+	x := pos.x
+	for str_pos < len(text) {
+		codepoint, codepoint_size := utf8_next_rune(text, str_pos)
+		str_pos += codepoint_size
 
 		glyph_info := get_font_glyph_info(font, codepoint)
 
 		if !is_measuring {
-			draw_font_glyph(output, font, glyph_info, size, x, y)
+			draw_font_glyph(output, font, glyph_info, size, {x, pos.y})
 		}
 
 		x += glyph_info.advance_x * size
 	}
 
 	if !is_measuring {
-		set_texture(prev_texture)
+		set_draw_texture(prev_texture)
 	}
 
 	return DrawFontTextMeasureResult{width = x - init_x}
@@ -1001,11 +984,12 @@ draw_font_glyph :: proc(
 	output: ^MeshBuffer,
 	font: ^DrawableFont,
 	glyph_info: GlyphInfo,
-	size, x, y: f32,
+	size: f32,
+	pos: Vec2,
 ) {
 	rect := Rect{
-		x + glyph_info.offset.x * size,
-		y + glyph_info.offset.y * size,
+		pos.x + glyph_info.offset.x * size,
+		pos.y + glyph_info.offset.y * size,
 		glyph_info.size.x * size,
 		glyph_info.size.y * size,
 	}
@@ -1096,12 +1080,7 @@ mouse_button_just_released :: proc(b: MBCode) -> bool {
 }
 
 get_mouse_pos :: proc() -> Vec2 {
-	return(
-		Vec2{
-			internal_mouse_position.x - layout_rect.x0,
-			internal_mouse_position.y - layout_rect.y0,
-		} \
-	)
+	return {internal_mouse_position.x - layout_rect.x0, internal_mouse_position.y - layout_rect.y0}
 }
 
 set_mouse_position :: proc(pos: Vec2) {
@@ -1109,7 +1088,7 @@ set_mouse_position :: proc(pos: Vec2) {
 }
 
 internal_glfw_scroll_callback :: proc "c" (window: glfw.WindowHandle, xoffset, yoffset: f64) {
-	incoming_mouse_wheel_notches += f32(xoffset)
+	incoming_mouse_wheel_notches += f32(yoffset)
 }
 
 mouse_is_over :: proc(rect: Rect) -> bool {
