@@ -138,7 +138,7 @@ draw_geometry_and_outlines_test :: proc() {
 		thickness:       f32,
 	}
 
-	arc_test_cases :: []ArcTestCase{
+	arc_test_cases :: []ArcTestCase {
 		{200, 200, 50, math.PI / 2, 3 * math.PI / 2, 3, 10},
 		{300, 300, 50, 0, 3 * math.PI, 2, 10},
 		{400, 400, 50, -math.PI / 2, math.PI / 2, 3, 10},
@@ -169,7 +169,7 @@ draw_geometry_and_outlines_test :: proc() {
 		cap_type:                  af.CapType,
 		outline_thickness:         f32,
 	}
-	line_test_cases := []LineTestCase{
+	line_test_cases := []LineTestCase {
 		{af.vw() - 60, 60, af.vw() - 100, af.vh() - 100, 10.0, .None, 10},
 		{af.vw() - 100, 60, af.vw() - 130, af.vh() - 200, 10.0, .Circle, 10},
 		{lineSize, lineSize, af.vw() - lineSize, af.vh() - lineSize, lineSize / 2, .Circle, 10},
@@ -371,8 +371,7 @@ draw_camera_test :: proc() {
 		monospace_font,
 		fmt.tprintf("%v, %v", camera_x_input, camera_z_input),
 		32,
-		-af.vw() / 2 + 10,
-		0,
+		{-af.vw() / 2 + 10, 0},
 	)
 
 }
@@ -387,7 +386,7 @@ draw_text_test :: proc() {
 	text: string = text_test_text_worldwide_1
 
 	af.set_draw_color(af.Color{0, 0, 0, 1})
-	res := af.draw_font_text(af.im, monospace_font, text, size, 0, 0, is_measuring = true)
+	res := af.draw_font_text(af.im, monospace_font, text, size, {0, 0}, is_measuring = true)
 	x: f32 = af.vw() / 2 - res.width / 2 + res.width * 0.5 * math.sin_f32(f32(t * 0.25))
 	y: f32 = size * 2
 	af.draw_font_text(af.im, monospace_font, text, size, {x, y})
@@ -412,39 +411,45 @@ RenderingTest :: struct {
 	doc:  string,
 }
 current_rendering_test := 0
-rendering_tests := [](RenderingTest){
-	RenderingTest{
+rendering_tests := [](RenderingTest) {
+	RenderingTest {
 		draw_text_test,
 		"draw_text_test",
 		`Does basic text rendering work? Does not test the edge-cases yet`,
 	},
-	RenderingTest{
+	RenderingTest {
 		draw_benchmark_test,
 		"draw_benchmark_test",
 		`A test that measures how fast the immediate mode is`,
 	},
 	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
-	RenderingTest{
+	RenderingTest {
 		draw_geometry_and_outlines_test,
 		"draw_geometry_and_outlines_test",
 		`Do the geometry and outline drawing methods work?`,
 	},
 	RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
-	RenderingTest{
+	RenderingTest {
 		draw_keyboard_and_input_test,
 		"draw_keyboard_and_input_test",
 		`Does keyboard input work?`,
 	},
 	RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
 	RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
-	RenderingTest{
+	RenderingTest {
 		draw_camera_test,
 		"draw_camera_test",
 		`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
 	},
 }
 
-draw_rendering_tests :: proc() {
+draw_rendering_tests :: proc() -> bool {
+	if af.key_just_pressed(af.KeyCode.Escape) {
+		return false
+	}
+
+	af.clear_screen(af.Color{1, 1, 1, 1})
+
 	changed_test := true
 	switch {
 	case af.key_just_pressed(af.KeyCode.Right):
@@ -488,6 +493,10 @@ draw_rendering_tests :: proc() {
 	af.set_draw_texture(nil)
 	r := af.Rect{0, 0, af.vw(), af.vh()}
 	af.draw_rect_outline(af.im, r, 5)
+
+	verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
+
+	return true
 }
 
 // I sometimes have to use this to check if there are problems with the immmediate mode rendering
@@ -523,7 +532,9 @@ main :: proc() {
 	af.show_window()
 
 	// init test resources
-	fb = af.new_framebuffer(af.new_texture_from_size(1, 1))
+	fb_texture := af.new_texture_from_size(1, 1)
+	defer af.free_texture(fb_texture)
+	fb = af.new_framebuffer(fb_texture)
 	defer af.free_framebuffer(fb)
 	af.resize_framebuffer(fb, 800, 600)
 
@@ -545,30 +556,5 @@ main :: proc() {
 	defer af.free_font(monospace_font)
 
 	// mesh := GetDiagnosticMevh()
-
-	for !af.window_should_close() && !af.key_just_pressed(af.KeyCode.Escape) {
-		af.begin_frame()
-
-		af.clear_screen(af.Color{1, 1, 1, 1})
-
-		// af.set_transform(af.mat4_identity)
-		// af.set_view(af.mat4_identity)
-		// af.set_projection(af.mat4_identity)
-		// af.set_camera_2D(0, 0, 1, 1)
-		// af.set_draw_color(af.Color{1, 0, 0, 1})
-		// af.mesh_draw(mesh, 6)
-		// af.draw_quad(
-		// 	af.im,
-		// 	mesh.vertices[0], 
-		// 	mesh.vertices[1], 
-		// 	mesh.vertices[2], 
-		// 	mesh.vertices[3], 
-		// );
-
-		draw_rendering_tests()
-
-		af.end_frame()
-		verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
-		free_all(context.temp_allocator)
-	}
+	af.run_main_loop(draw_rendering_tests)
 }

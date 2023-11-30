@@ -35,6 +35,7 @@ window: glfw.WindowHandle
 last_frame_time: f64
 delta_time: f32
 layout_rect: Rect
+window_render_fn: (proc() -> bool)
 
 window_rect: Rect // NOTE: x0, y0 are always zero. 
 framebuffer_rect: Rect
@@ -61,8 +62,12 @@ inputted_runes := [KeyCode_Max]rune{}
 inputted_runes_count: int
 is_any_down, was_any_down: bool
 
-keys_just_pressed := [KeyCode_Max]KeyCode{} // should also capture repeats
-keys_just_pressed_count: int
+// unlike key_just_pressed, this also captures repeats
+keys_just_pressed_or_repeated := [KeyCode_Max]KeyCode{}
+keys_just_pressed_or_repeated_count: int
+get_keys_just_pressed_or_repeated :: proc() -> []KeyCode {
+	return keys_just_pressed_or_repeated[0:keys_just_pressed_or_repeated_count]
+}
 
 incoming_mouse_wheel_notches: f32 = 0
 mouse_wheel_notches: f32 = 0
@@ -97,6 +102,30 @@ vh :: proc() -> f32 {
 	return layout_rect.height
 }
 
+// render_fn should return true if the loop should continue for one more frame, and false if it shuold exit
+run_main_loop :: proc(render_fn: (proc() -> bool)) {
+	window_render_fn = render_fn
+	clear_screen({0, 0, 0, 0})
+
+	for !window_should_close() && draw_frame() {}
+}
+
+@(private)
+draw_frame :: proc() -> bool {
+	if window_render_fn == nil {
+		return false
+	}
+
+	begin_frame()
+
+	res := window_render_fn()
+
+	free_all(context.temp_allocator)
+	end_frame()
+
+	return res
+}
+
 set_target_fps :: proc(fps: int) {
 	target_fps = fps
 }
@@ -125,14 +154,14 @@ internal_glfw_key_callback :: proc "c" (
 		return
 	}
 
-	if (keys_just_pressed_count >= len(keys_just_pressed)) {
+	if (keys_just_pressed_or_repeated_count >= len(keys_just_pressed_or_repeated)) {
 		context = runtime.default_context()
 		debug_log("WARNING - key input buffer is full")
 		return
 	}
 
-	keys_just_pressed[keys_just_pressed_count] = KeyCode(key)
-	keys_just_pressed_count += 1
+	keys_just_pressed_or_repeated[keys_just_pressed_or_repeated_count] = KeyCode(key)
+	keys_just_pressed_or_repeated_count += 1
 }
 
 internal_glfw_framebuffer_size_callback :: proc "c" (
@@ -144,6 +173,10 @@ internal_glfw_framebuffer_size_callback :: proc "c" (
 
 	context = runtime.default_context()
 	internal_on_framebuffer_resize(width, height)
+
+	clear_screen({0, 0, 0, 0})
+
+	draw_frame()
 }
 
 @(private)
@@ -386,8 +419,6 @@ un_initialize :: proc() {
 	free_mesh_buffer(im)
 	free_texture(white_pixel_texture)
 
-	glfw.Terminate()
-
 	internal_un_initialize_text()
 
 	debug_log("Done")
@@ -560,10 +591,10 @@ set_stencil_mode :: proc(mode: StencilMode) {
 		gl.StencilFunc(gl.ALWAYS, 0, 0xFF)
 	case .DrawOverOnes:
 		gl.StencilMask(0)
-		gl.StencilFunc(gl.EQUAL, 0, 0xFF)
+		gl.StencilFunc(gl.EQUAL, 0xFF, 0xFF)
 	case .DrawOverZeroes:
 		gl.StencilMask(0)
-		gl.StencilFunc(gl.EQUAL, 0xFF, 0xFF)
+		gl.StencilFunc(gl.EQUAL, 0, 0xFF)
 	case .Off:
 	// should already be handled
 	}
@@ -719,9 +750,9 @@ arc_edge_count :: proc(
 	// If we want 1 point every x units of circumferance, then num_points = C / x. 
 	// We would break the angle down into angle / (num_points) to get the delta_angle.
 	// So, delta_angle = angle / (num_points) = angle / ((radius * angle) / x) = (angle * x) / (radius * angle) = x / radius
-	delta_angle := points_per_pixel / radius
-
+	delta_angle := abs(points_per_pixel / radius)
 	edge_count := min(int(angle / delta_angle) + 1, max_circle_edge_count)
+
 
 	return edge_count
 }
@@ -767,7 +798,7 @@ draw_arc_outline :: proc(
 		cos_angle := math.cos(angle)
 
 		p1 := Vec2{center.x + radius * cos_angle, center.y + radius * sin_angle}
-		p2 := Vec2{
+		p2 := Vec2 {
 			center.x + (radius + thickness) * cos_angle,
 			center.y + (radius + thickness) * sin_angle,
 		}
@@ -798,12 +829,7 @@ CapType :: enum {
 	Circle,
 }
 
-draw_line :: proc(
-	output: ^MeshBuffer,
-	p0, p1: Vec2,
-	thickness: f32 = 1,
-	cap_type := CapType.None,
-) {
+draw_line :: proc(output: ^MeshBuffer, p0, p1: Vec2, thickness: f32, cap_type: CapType) {
 	draw_cap :: proc(output: ^MeshBuffer, pos: Vec2, angle, thickness: f32, cap_type: CapType) {
 		switch cap_type {
 		case .None:
@@ -887,7 +913,7 @@ draw_line_outline :: proc(
 	mag := linalg.length(dir)
 
 	perp_inner := Vec2{-thickness * dir.y / mag, thickness * dir.x / mag}
-	perp_outer := Vec2{
+	perp_outer := Vec2 {
 		-(thickness + outline_thickness) * dir.y / mag,
 		(thickness + outline_thickness) * dir.x / mag,
 	}
@@ -914,7 +940,39 @@ draw_line_outline :: proc(
 
 
 DrawFontTextMeasureResult :: struct {
-	width: f32,
+	str_pos:        int, // how far into the text did we get to? (makes more sense if you set a max_width on the text)
+	start_x, width: f32,
+}
+
+draw_font_text_pivoted :: proc(
+	output: ^MeshBuffer,
+	font: ^DrawableFont,
+	text: string,
+	size: f32,
+	pos: Vec2,
+	pivot: Vec2,
+	max_width: f32 = math.INF_F32,
+) -> DrawFontTextMeasureResult {
+	res := draw_font_text(
+		output,
+		font,
+		text,
+		size,
+		pos,
+		is_measuring = true,
+		max_width = max_width,
+	)
+	res = draw_font_text(
+		output,
+		font,
+		text,
+		size,
+		{pos.x - pivot.x * res.width, pos.y - pivot.y * size},
+		is_measuring = false,
+		max_width = max_width,
+	)
+
+	return res
 }
 
 draw_font_text :: proc(
@@ -923,35 +981,40 @@ draw_font_text :: proc(
 	text: string,
 	size: f32,
 	pos: Vec2,
-	str_pos: int = 0,
 	is_measuring := false,
+	max_width: f32 = math.INF_F32,
 ) -> DrawFontTextMeasureResult {
 	prev_texture := current_texture
 	if !is_measuring {
 		set_draw_texture(font.texture)
 	}
 
-	str_pos := str_pos
-	init_x := pos.x
-	x := pos.x
-	for str_pos < len(text) {
-		codepoint, codepoint_size := utf8_next_rune(text, str_pos)
-		str_pos += codepoint_size
+	res := DrawFontTextMeasureResult{}
+	res.start_x = pos.x
+	for res.str_pos < len(text) {
+		codepoint, codepoint_size := utf8_next_rune(text, res.str_pos)
 
 		glyph_info := get_font_glyph_info(font, codepoint)
+
+		x := res.start_x + res.width
+
+		res.width += glyph_info.advance_x * size
+		if res.width > max_width {
+			break
+		}
+
+		res.str_pos += codepoint_size
 
 		if !is_measuring {
 			draw_font_glyph(output, font, glyph_info, size, {x, pos.y})
 		}
-
-		x += glyph_info.advance_x * size
 	}
 
 	if !is_measuring {
 		set_draw_texture(prev_texture)
 	}
 
-	return DrawFontTextMeasureResult{width = x - init_x}
+	return res
 }
 
 get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
@@ -963,9 +1026,8 @@ get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
 
 	if slot == -1 {
 		if codepoint == '?' {
-			debug_log(
+			debug_fatal_error(
 				"Font did not contain the '?' code point, which is requried when handling unknown code points",
-				severity = .FatalError,
 			)
 			return GlyphInfo{}
 		}
@@ -985,7 +1047,7 @@ draw_font_glyph :: proc(
 	size: f32,
 	pos: Vec2,
 ) {
-	rect := Rect{
+	rect := Rect {
 		pos.x + glyph_info.offset.x * size,
 		pos.y + glyph_info.offset.y * size,
 		glyph_info.size.x * size,
@@ -1026,7 +1088,7 @@ key_just_released :: proc(key: KeyCode) -> bool {
 @(private)
 internal_update_key_inputs_before_poll :: proc() {
 	inputted_runes_count = 0
-	keys_just_pressed_count = 0
+	keys_just_pressed_or_repeated_count = 0
 }
 
 @(private)
@@ -1044,7 +1106,8 @@ internal_update_key_input :: proc() {
 		key := KeyCode(i)
 		is_down := false
 
-		// TODO: report this bug in ols. I shouldn't need to put #partial here
+		// TODO: report this bug in ols. I shouldn't need to put #partial here 
+		// because of the case: at the end that should be handling everything
 		#partial switch key {
 		case .Ctrl:
 			is_down = check_key(.LeftCtrl) || check_key(.RightCtrl)
