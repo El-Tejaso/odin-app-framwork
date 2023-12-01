@@ -11,20 +11,24 @@ Image :: struct {
 }
 
 Texture :: struct {
-	width, height, num_channels:         int,
-	handle:                              u32,
-	filtering, clamping:                 int,
-	pixel_format, internal_pixel_format: uint,
+	width, height:                             int,
+	handle:                                    u32,
+	filtering, clamping:                       int,
+	gl_pixel_format, internal_gl_pixel_format: uint,
+	num_channels:                              int, // this should be consistent with the pixel format. af doesnt attempt to validate this
 }
 
 TEXTURE_FILTERING_NEAREST :: gl.NEAREST
 TEXTURE_FILTERING_LINEAR :: gl.LINEAR
 
 DEFAULT_TEXTURE_CONFIG :: Texture {
-	filtering             = gl.NEAREST,
-	clamping              = gl.CLAMP,
-	pixel_format          = gl.RGBA,
-	internal_pixel_format = gl.RGBA,
+	filtering                = gl.LINEAR,
+	clamping                 = gl.CLAMP,
+
+	// these should all be set together
+	gl_pixel_format          = gl.RGBA,
+	internal_gl_pixel_format = gl.RGBA,
+	num_channels             = 4,
 }
 
 new_image :: proc(path: string) -> ^Image {
@@ -59,36 +63,31 @@ upload_texture_settings :: proc(texture: ^Texture) {
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, c.int(texture.clamping))
 }
 
-upload_texture :: proc(texture: ^Texture, width, height, num_channels: int, data: [^]byte) {
+upload_texture :: proc(texture: ^Texture, data: [^]byte) {
 	internal_use_texture(texture)
 
-	texture.width = width
-	texture.height = height
-	texture.num_channels = num_channels
-
 	gl.TexImage2D(
-		gl.TEXTURE_2D, // GLenum target,
-		0, // GLint level,
-		c.int(texture.internal_pixel_format), // GLint internalformat,
-		c.int(texture.width), // GLsizei width,
-		c.int(texture.height), // GLsizei height,
-		0, // GLint border,
-		u32(texture.pixel_format), // GLenum format,
-		gl.UNSIGNED_BYTE, // GLenum type,
-		data, // const void * data);
+		target = gl.TEXTURE_2D,
+		level = 0,
+		internalformat = c.int(texture.internal_gl_pixel_format),
+		width = c.int(texture.width),
+		height = c.int(texture.height),
+		border = 0,
+		format = u32(texture.gl_pixel_format),
+		type = gl.UNSIGNED_BYTE,
+		pixels = data,
 	)
 
 	err := gl.GetError()
 	if (err != gl.NO_ERROR) {
-		debug_log(
+		debug_fatal_error(
 			"ERROR uploading texture - %d, %d, %d, %d - %d",
-			texture.internal_pixel_format,
+			texture.internal_gl_pixel_format,
 			texture.width,
 			texture.height,
-			texture.pixel_format,
+			texture.gl_pixel_format,
 			err,
 		)
-		panic("xd")
 	}
 }
 
@@ -97,9 +96,13 @@ new_texture_from_image :: proc(
 	config: Texture = DEFAULT_TEXTURE_CONFIG,
 ) -> ^Texture {
 	texture := config
+	texture.width = image.width
+	texture.height = image.height
+	texture.num_channels = image.num_channels
+
 	gl.GenTextures(1, &texture.handle)
 
-	upload_texture(&texture, image.width, image.height, image.num_channels, image.data)
+	upload_texture(&texture, image.data)
 	upload_texture_settings(&texture)
 
 	gl.BindTexture(gl.TEXTURE_2D, 0)
@@ -111,9 +114,11 @@ new_texture_from_size :: proc(
 	config: Texture = DEFAULT_TEXTURE_CONFIG,
 ) -> ^Texture {
 	texture := config
+	texture.width = width
+	texture.height = height
 	gl.GenTextures(1, &texture.handle)
 
-	upload_texture(&texture, width, height, 4, nil)
+	upload_texture(&texture, nil)
 	upload_texture_settings(&texture)
 
 	gl.BindTexture(gl.TEXTURE_2D, 0)
@@ -140,7 +145,7 @@ upload_texture_subregion :: proc(texture: ^Texture, xOffset, yOffset: int, sub_i
 		c.int(yOffset),
 		c.int(sub_image.width),
 		c.int(sub_image.height),
-		u32(texture.pixel_format),
+		u32(texture.gl_pixel_format),
 		gl.UNSIGNED_BYTE,
 		sub_image.data,
 	)
@@ -156,5 +161,8 @@ resize_texture :: proc(texture: ^Texture, width, height: int) {
 		return
 	}
 
-	upload_texture(texture, width, height, 4, nil)
+	texture.width = width
+	texture.height = height
+
+	upload_texture(texture, nil)
 }

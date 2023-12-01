@@ -357,7 +357,6 @@ initialize :: proc(width: int, height: int) -> bool {
 	}
 
 	internal_initialize_text()
-	debug_log("Text initialized [SDL2::TTF]")
 
 	return true
 }
@@ -991,23 +990,45 @@ draw_font_text :: proc(
 
 	res := DrawFontTextMeasureResult{}
 	res.start_x = pos.x
+	prev_glyph_index: c.int
 	for res.str_pos < len(text) {
 		codepoint, codepoint_size := utf8_next_rune(text, res.str_pos)
+		is_space: bool
+		glyph_info: GlyphInfo
+		advance_x: f32
 
-		glyph_info := get_font_glyph_info(font, codepoint)
+		if codepoint == ' ' {
+			is_space = true
+			advance_x = size * 0.5
+		} else if codepoint == '\t' {
+			// TODO: render tabs properly
+			is_space = true
+			advance_x = size * 2
+		} else {
+			glyph_info = font_rasterize_glyph(font, codepoint)
+			// advance_x := glyph_info.advance_x
+			advance_x = size * glyph_info.advance_x / f32(font.size)
+			if prev_glyph_index != 0 {
+				advance_x += glyph_info_get_kerning_advance(
+					font,
+					prev_glyph_index,
+					glyph_info.glyph_index,
+				)
+			}
+		}
 
-		x := res.start_x + res.width
-
-		res.width += glyph_info.advance_x * size
-		if res.width > max_width {
+		if res.width + advance_x > max_width {
 			break
 		}
 
-		res.str_pos += codepoint_size
-
-		if !is_measuring {
+		x := res.start_x + res.width
+		if !is_measuring && !is_space {
 			draw_font_glyph(output, font, glyph_info, size, {x, pos.y})
 		}
+
+		res.width += advance_x
+		res.str_pos += codepoint_size
+		prev_glyph_index = glyph_info.glyph_index
 	}
 
 	if !is_measuring {
@@ -1017,7 +1038,9 @@ draw_font_text :: proc(
 	return res
 }
 
-get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
+// font_rasterize_glyph renders a new glyph to the atlas while evicting an old glyph if that glyph hasn't already been rendered.
+@(private)
+font_rasterize_glyph :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
 	slot := internal_font_rune_is_loaded(font, codepoint)
 	if slot == -1 {
 		flush()
@@ -1032,7 +1055,7 @@ get_font_glyph_info :: proc(font: ^DrawableFont, codepoint: rune) -> GlyphInfo {
 			return GlyphInfo{}
 		}
 
-		return get_font_glyph_info(font, '?')
+		return font_rasterize_glyph(font, '?')
 	}
 
 	glyph_info := font.glyph_slots[slot]
@@ -1048,8 +1071,8 @@ draw_font_glyph :: proc(
 	pos: Vec2,
 ) {
 	rect := Rect {
-		pos.x + glyph_info.offset.x * size,
-		pos.y + glyph_info.offset.y * size,
+		pos.x + size * glyph_info.offset.x,
+		pos.y + size * glyph_info.offset.y,
 		glyph_info.size.x * size,
 		glyph_info.size.y * size,
 	}

@@ -382,7 +382,8 @@ draw_text_test :: proc() {
 	t += f64(af.delta_time)
 
 	size :: 32
-	// text := "Hello world!"
+	// text := "| _"
+	// text := "ab.gjH;$%"
 	text: string = text_test_text_worldwide_1
 
 	af.set_draw_color(af.Color{0, 0, 0, 1})
@@ -414,7 +415,7 @@ current_rendering_test := 0
 rendering_tests := [](RenderingTest) {
 	RenderingTest {
 		draw_text_test,
-		"draw_text_test",
+		"",
 		`Does basic text rendering work? Does not test the edge-cases yet`,
 	},
 	RenderingTest {
