@@ -25,43 +25,32 @@ randf :: proc() -> f32 {
 	return rand.float32()
 }
 
-t: f64 = 0
-fps, current_frames: int
-
-// returns true if we ticked up
-track_fps :: proc(interval: f64) -> bool {
-	t += f64(af.delta_time)
-	if (t > interval) {
-		t = 0
-		fps = int(f64(current_frames) / interval)
-		current_frames = 0
-		return true
-	}
-
-	current_frames += 1
-	return false
-}
 
 line_benchmark_line_amount := 200
 line_benchmark_thickness :: 5
 
 verts_uploaded, indices_uploaded: uint
 
+benchmark_fps_tracker: af.FpsTracker
 draw_benchmark_test :: proc() {
 	rand.set_global_seed(0)
 
-	if (track_fps(1.0)) {
+	if (af.track_fps(&benchmark_fps_tracker, 1, af.delta_time)) {
 		// try to figure out how many lines we need to draw to get 60 fps.
 		// we are assuming there is a linear relationship between 'line_benchmark_line_amount', and the time it takes to draw 1 frame
 
 		// NOTE: this benchmark could be some deterministic fractal pattern, which would make it look a lot cooler.
-		actualToWantedRatio := f64(fps) / 60
+		actualToWantedRatio := benchmark_fps_tracker.last_fps / 60
 		line_benchmark_line_amount = max(
 			1,
 			int(math.ceil(actualToWantedRatio * f64(line_benchmark_line_amount))),
 		)
 
-		af.debug_log("FPS: %v with line_benchmark_line_amount %v", fps, line_benchmark_line_amount)
+		af.debug_log(
+			"FPS: %v with line_benchmark_line_amount %v",
+			benchmark_fps_tracker.last_fps,
+			line_benchmark_line_amount,
+		)
 		af.debug_log("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
 	}
 
@@ -251,6 +240,8 @@ draw_keyboard_and_input_test :: proc() {
 
 test_texture: ^af.Texture
 test_texture_2: ^af.Texture
+
+t: f64
 
 draw_texture_test :: proc() {
 	t += f64(af.delta_time)
@@ -444,6 +435,26 @@ rendering_tests := [](RenderingTest) {
 	},
 }
 
+render_multithreaded_rendering_tests :: proc() {
+	af.clear_screen({1, 1, 1, 1})
+
+	af.set_draw_params({0, 0, 0, 1})
+	pos: af.Vec2 = {af.vw() / 2, af.vh() / 2}
+	af.draw_font_text(af.im, monospace_font, "not sure what to test lol", 32, pos)
+
+	af.draw_rect(af.im, {0.1, 0.1, 100, 100})
+	render_diagnostics()
+}
+
+update_multithreaded_rendering_tests :: proc() -> bool {
+	if af.key_just_pressed(.Escape) {
+		return false
+	}
+
+
+	return true
+}
+
 draw_rendering_tests :: proc() -> bool {
 	if af.key_just_pressed(af.KeyCode.Escape) {
 		return false
@@ -497,7 +508,25 @@ draw_rendering_tests :: proc() -> bool {
 
 	verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
 
+	render_diagnostics()
+
 	return true
+}
+
+render_diagnostics :: proc() {
+	af.set_layout_rect(af.window_rect, false)
+	af.set_draw_params({0, 0, 0, 1})
+	af.draw_font_text(
+		af.im,
+		monospace_font,
+		fmt.tprintf(
+			"r:%.0fhz|u%.0fhz",
+			af.render_fps_tracker.last_fps,
+			af.update_fps_tracker.last_fps,
+		),
+		32,
+		{10, 10},
+	)
 }
 
 // I sometimes have to use this to check if there are problems with the immmediate mode rendering
@@ -521,41 +550,93 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 	return mesh
 }
 
-main :: proc() {
-	if (!af.initialize(800, 600)) {
-		af.debug_log("Could not initialize. rip\n")
-		return
-	}
-	defer af.un_initialize()
+fb_texture: ^af.Texture
+test_image: ^af.Image
 
+init_tests :: proc() {
 	af.set_window_title("Testing the thing")
 	af.maximize_window()
 	af.show_window()
 
 	// init test resources
-	fb_texture := af.new_texture_from_size(1, 1)
-	defer af.free_texture(fb_texture)
+	fb_texture = af.new_texture_from_size(1, 1)
 	fb = af.new_framebuffer(fb_texture)
-	defer af.free_framebuffer(fb)
 	af.resize_framebuffer(fb, 800, 600)
 
-	test_image := af.new_image("./res/settings_icon.png")
-	defer af.free_image(test_image)
+	test_image = af.new_image("./res/settings_icon.png")
 
 	texture_settings := af.DEFAULT_TEXTURE_CONFIG
 
 	texture_settings.filtering = af.TEXTURE_FILTERING_LINEAR
 	test_texture = af.new_texture_from_image(test_image, texture_settings)
-	defer af.free_texture(test_texture)
 
 	texture_settings.filtering = af.TEXTURE_FILTERING_NEAREST
 	test_texture_2 = af.new_texture_from_image(test_image, texture_settings)
-	defer af.free_texture(test_texture_2)
 
 	// texture_grid_size=4 for test purposes to test the font cache evicting
 	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32, texture_grid_size = 4)
-	defer af.free_font(monospace_font)
-
 	// mesh := GetDiagnosticMevh()
-	af.run_main_loop(draw_rendering_tests)
+}
+
+uninit_tests :: proc() {
+	defer af.un_initialize()
+
+	defer af.free_texture(fb_texture)
+	defer af.free_framebuffer(fb)
+	defer af.free_image(test_image)
+	defer af.free_texture(test_texture)
+	defer af.free_texture(test_texture_2)
+	defer af.free_font(monospace_font)
+}
+
+
+run_all_tests_singlethreaded :: proc() {
+	for af.new_update_frame() && af.new_render_frame() && draw_rendering_tests() {
+	}
+}
+
+/*
+
+TODO: 
+- [x] get multithreaded working
+- [] get sleep_for_hz working
+- 		render at monitor's refresh rate, update at 2000hz
+- [] convert the tests to render+update pairs
+
+*/
+
+run_all_tests_multithreaded :: proc() {
+	render_thread_proc :: proc() {
+		for af.new_render_frame() {
+			render_multithreaded_rendering_tests()
+		}
+	}
+	rt := af.start_render_thread(render_thread_proc)
+
+	// af.target_fps_update = 2000
+	// af.target_fps = 60
+	for {
+		if !af.new_update_frame() {
+			break
+		}
+
+		if !update_multithreaded_rendering_tests() {
+			break
+		}
+	}
+
+	af.stop_and_join_render_thread(rt)
+}
+
+main :: proc() {
+	if (!af.initialize(800, 600)) {
+		af.debug_log("Could not initialize. rip\n")
+		return
+	}
+
+	init_tests()
+	defer uninit_tests()
+
+	// run_all_tests_singlethreaded()
+	run_all_tests_multithreaded()
 }
