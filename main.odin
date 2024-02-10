@@ -435,14 +435,29 @@ rendering_tests := [](RenderingTest) {
 	},
 }
 
+
 render_multithreaded_rendering_tests :: proc() {
 	af.clear_screen({1, 1, 1, 1})
+
 
 	af.set_draw_params({0, 0, 0, 1})
 	pos: af.Vec2 = {af.vw() / 2, af.vh() / 2}
 	af.draw_font_text(af.im, monospace_font, "not sure what to test lol", 32, pos)
 
-	af.draw_rect(af.im, {0.1, 0.1, 100, 100})
+	af.draw_font_text(
+		af.im,
+		monospace_font,
+		fmt.tprintf(
+			"r: %v @%.2ffps, u: %v @%.2ffps",
+			af.render_sleep_nano,
+			af.target_fps,
+			af.update_sleep_nano,
+			af.target_fps_update,
+		),
+		32,
+		af.Vec2{64, af.vh() / 2 + 64},
+	)
+
 	render_diagnostics()
 }
 
@@ -520,9 +535,13 @@ render_diagnostics :: proc() {
 		af.im,
 		monospace_font,
 		fmt.tprintf(
-			"r:%.0fhz|u%.0fhz",
-			af.render_fps_tracker.last_fps,
-			af.update_fps_tracker.last_fps,
+			"r:%.0fhz,%.2f,%d|u%.0fhz,%.2f,%d",
+			af.fps_tracker_render.last_fps,
+			af.fps_tracker_render.timer,
+			af.fps_tracker_render.frames,
+			af.fps_tracker_update.last_fps,
+			af.fps_tracker_update.timer,
+			af.fps_tracker_update.frames,
 		),
 		32,
 		{10, 10},
@@ -591,7 +610,12 @@ uninit_tests :: proc() {
 
 
 run_all_tests_singlethreaded :: proc() {
-	for af.new_update_frame() && af.new_render_frame() && draw_rendering_tests() {
+	for af.new_update_frame() {
+		af.begin_render_frame()
+
+		draw_rendering_tests()
+
+		af.end_render_frame()
 	}
 }
 
@@ -599,22 +623,23 @@ run_all_tests_singlethreaded :: proc() {
 
 TODO: 
 - [x] get multithreaded working
-- [] get sleep_for_hz working
-- 		render at monitor's refresh rate, update at 2000hz
+- [x] get sleep_for_hz working
+- [x] update at 2000hz
+- [x] Fix black screen flicker wile resizing
+- [] render at monitor's refresh rate, 
 - [] convert the tests to render+update pairs
 
 */
 
 run_all_tests_multithreaded :: proc() {
 	render_thread_proc :: proc() {
-		for af.new_render_frame() {
-			render_multithreaded_rendering_tests()
-		}
+		render_multithreaded_rendering_tests()
 	}
+
 	rt := af.start_render_thread(render_thread_proc)
 
-	// af.target_fps_update = 2000
-	// af.target_fps = 60
+	af.target_fps_update = 240
+	af.target_fps = 480
 	for {
 		if !af.new_update_frame() {
 			break
@@ -622,6 +647,13 @@ run_all_tests_multithreaded :: proc() {
 
 		if !update_multithreaded_rendering_tests() {
 			break
+		}
+
+		AMNT :: 50
+		if af.key_just_pressed(.Up) {
+			af.target_fps_update += AMNT
+		} else if af.key_just_pressed(.Down) {
+			af.target_fps_update -= AMNT
 		}
 	}
 

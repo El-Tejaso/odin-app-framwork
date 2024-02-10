@@ -6,6 +6,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:runtime"
 import "core:strings"
+import "core:sync"
 import "core:thread"
 import "core:time"
 import gl "vendor:OpenGL"
@@ -88,8 +89,8 @@ mouse_delta: Vec2
 stencil_mode: StencilMode
 
 // these are mainly for diagnostics, and aren't intended for highly accurate reporting of the fps
-render_fps_tracker: FpsTracker
-update_fps_tracker: FpsTracker
+fps_tracker_render: FpsTracker
+fps_tracker_update: FpsTracker
 
 FpsTracker :: struct {
 	last_fps, timer: f64,
@@ -98,6 +99,8 @@ FpsTracker :: struct {
 
 // returns true when it ticks an interval
 track_fps :: proc(state: ^FpsTracker, interval: f64, delta_time: f32) -> bool {
+	state.frames += 1
+
 	if state.timer >= interval {
 		state.last_fps = f64(state.frames) / state.timer
 		state.timer = 0
@@ -106,7 +109,6 @@ track_fps :: proc(state: ^FpsTracker, interval: f64, delta_time: f32) -> bool {
 	}
 
 	state.timer += f64(delta_time)
-	state.frames += 1
 
 	return false
 }
@@ -136,64 +138,91 @@ new_frame :: proc() -> bool {
 	return true
 }
 
+update_sleep_nano: i64
 new_update_frame :: proc() -> bool {
-	if window_should_close() {
-		has_exit_signal = true
-		return false
-	}
+	update_sleep_nano = sleep_for_fps(
+		target_fps_update,
+		&delta_time_update,
+		&last_frame_time_update,
+	)
 
-	sleep_for_fps(target_fps_update, &delta_time_update, &last_frame_time_update)
-	track_fps(&update_fps_tracker, 1, delta_time_update)
+	track_fps(&fps_tracker_update, 1, delta_time_update)
 
 	internal_update_key_inputs_before_poll()
 	glfw.PollEvents()
 	internal_update_mouse_input()
 	internal_update_key_input()
 
-	w, h := glfw.GetWindowSize(window)
-	window_rect.width = f32(w)
-	window_rect.height = f32(h)
+	if window_should_close() {
+		has_exit_signal = true
+		return false
+	}
+
+	// w, h := glfw.GetWindowSize(window)
+	// window_rect.width = f32(w)
+	// window_rect.height = f32(h)
 
 	free_all(context.temp_allocator)
 
 	return true
 }
 
-sleep_for_fps :: proc(target_fps: f32, delta_time: ^f32, last_frame_time: ^f64) {
-	frame_end := get_time()
-	delta_time^ = f32(frame_end - last_frame_time^)
 
-	if (target_fps < 0.001) {
-		last_frame_time^ = frame_end
-	} else {
+// returns how many nanoseconds we slept for
+sleep_for_fps :: proc(target_fps: f32, delta_time: ^f32, last_frame_time: ^f64) -> i64 {
+	last_frame_end := last_frame_time^
+
+	t := get_time()
+	delta_time^ = f32(t - last_frame_end)
+	last_frame_time^ = t
+
+	if (target_fps > 0.001) {
 		// This is a power saving mechanism that will sleep the thread if we
 		// have the time available to do so. It should reduce the overall CPU consumption.
 		// TODO: extract to a seprate function like sleep_for_hz
 
-		frame_duration := 1 / f64(target_fps)
+		frame_duration := 1.0 / f64(target_fps)
 		time_to_next_frame := frame_duration - f64(delta_time^)
 		if (time_to_next_frame > 0) {
-			nanoseconds := i64(time_to_next_frame * 1_000_000_000)
-			time.sleep(time.Duration(nanoseconds))
+			nanoseconds_to_next_frame := i64(time_to_next_frame * 1_000_000_000)
+			time.accurate_sleep(time.Duration(nanoseconds_to_next_frame))
 
-			frame_end = get_time()
-			delta_time^ = f32(frame_end - last_frame_time^)
+			// extend the delta time as needed, since we just slept a bunch
+			t := get_time()
+			delta_time^ = f32(t - last_frame_end)
+			last_frame_time^ = t
+
+			return nanoseconds_to_next_frame
 		}
-
-		last_frame_time^ = frame_end
 	}
+
+	return 0
 }
 
-// Used as the boundary between two render-frames.
-// Returns true, else returns false if new_update_frame started returning false.
-//
-// Set the fps with set_target_fps
-new_render_frame :: proc() -> bool {
-	flush()
-	sleep_for_fps(target_fps, &delta_time, &last_frame_time)
-	glfw.SwapBuffers(window)
+render_context_mutex: sync.Mutex
+lock_render_context :: proc() {
+	sync.lock(&render_context_mutex)
+	glfw.MakeContextCurrent(window)
+}
 
-	track_fps(&render_fps_tracker, 1, delta_time)
+unlock_render_context :: proc() {
+	glfw.MakeContextCurrent(nil)
+	sync.unlock(&render_context_mutex)
+}
+
+render_sleep_nano: i64
+
+end_render_frame :: proc() {
+	flush()
+	glfw.SwapBuffers(window)
+	unlock_render_context()
+
+	render_sleep_nano = sleep_for_fps(target_fps, &delta_time, &last_frame_time)
+	track_fps(&fps_tracker_render, 1, delta_time)
+}
+
+begin_render_frame :: proc() {
+	lock_render_context()
 
 	internal_set_framebuffer_directly(nil)
 	set_stencil_mode(.Off)
@@ -206,7 +235,7 @@ new_render_frame :: proc() -> bool {
 	free_all(context.temp_allocator)
 	reset_mesh_stats()
 
-	return !has_exit_signal
+
 }
 
 
@@ -214,8 +243,10 @@ new_render_frame :: proc() -> bool {
 // rendering while a user is resizing, but at a cost.
 // Your render and update code must now be separate, and 
 // you need to be careful that you don't accidentally call main-thread functions here.
-// 
 // TODO: document what these are
+//
+// Also The window flickers when you resize, might be an epilepsy risk
+// NOTE: render_thread_proc should just render a single frame and then return. it shouldn't start it's own render loop
 start_render_thread :: proc(render_thread_proc: proc()) -> ^thread.Thread {
 	// relinquish the context from the main thread
 	render_proc = render_thread_proc
@@ -223,17 +254,13 @@ start_render_thread :: proc(render_thread_proc: proc()) -> ^thread.Thread {
 
 	// aquire the context in this new thread, and then run the rendering function.
 	render_proc_wrapper :: proc() {
-		// we're assuming they've coded a while loop in there.
-		// Something like:
-		// for af.new_render_frame() {
-		// 		rendering code here
-		// } 
+		for !has_exit_signal {
+			begin_render_frame()
 
-		glfw.MakeContextCurrent(window)
+			render_proc()
 
-		render_proc()
-
-		glfw.MakeContextCurrent(nil)
+			end_render_frame()
+		}
 	}
 	render_thread := thread.create_and_start(render_proc_wrapper)
 
@@ -295,12 +322,20 @@ internal_glfw_framebuffer_size_callback :: proc "c" (
 	window: glfw.WindowHandle,
 	width, height: c.int,
 ) {
+	context = runtime.default_context()
+
 	window_rect.width = f32(width)
 	window_rect.height = f32(height)
 
-	context = runtime.default_context()
 	internal_on_framebuffer_resize(width, height)
 
+	if render_proc != nil {
+		begin_render_frame()
+
+		render_proc()
+
+		end_render_frame()
+	}
 }
 
 @(private)
