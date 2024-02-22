@@ -609,18 +609,6 @@ run_all_tests_singlethreaded :: proc() {
 	}
 }
 
-/*
-
-TODO: 
-- [x] get multithreaded working
-- [x] get sleep_for_hz working
-- [x] update at 2000hz
-- [x] Fix black screen flicker wile resizing
-- [] render at monitor's refresh rate, 
-- [x] convert the tests to render+update pairs
-
-*/
-
 run_all_tests_multithreaded :: proc() {
 	af.set_vsync(true)
 	// af.set_target_render_fps(60)
