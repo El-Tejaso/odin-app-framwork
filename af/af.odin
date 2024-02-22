@@ -32,6 +32,7 @@ KEYBOARD_CHARS :: "\t\b\n `1234567890-=qwertyuiop[]asdfghjkl;'\\zxcvbnm,./"
 // Window state
 
 window_title: string
+@(private)
 target_fps: f32
 target_fps_update: f32
 window: glfw.WindowHandle
@@ -42,6 +43,7 @@ delta_time_update: f32
 layout_rect: Rect
 
 window_rect: Rect // NOTE: x0, y0 are always zero. 
+window_wants_render_context: bool
 framebuffer_rect: Rect
 
 // Render state
@@ -255,6 +257,14 @@ start_render_thread :: proc(render_thread_proc: proc()) -> ^thread.Thread {
 	// aquire the context in this new thread, and then run the rendering function.
 	render_proc_wrapper :: proc() {
 		for !has_exit_signal {
+			if window_wants_render_context && target_fps < 0.001 {
+				// If this isn't present, the render thread will hog the render context,
+				// causing a resize op to make the window freeze when the target_fps is basically 0.
+				// This code will sleep the render thread so that the resize thread has a chance to aquire the
+				// render context.
+				time.sleep(time.Millisecond)
+			}
+
 			begin_render_frame()
 
 			render_proc()
@@ -275,13 +285,31 @@ stop_and_join_render_thread :: proc(render_thread: ^thread.Thread) {
 	glfw.MakeContextCurrent(window)
 }
 
-// TODO: actually find the glfw function we're going to wrap
-get_monitor_refresh_rate :: proc() -> f32 {
-	return 60
+
+// Enables or disables VSync.
+// This method only works when called on the render thread.
+// NOTE: calling this with state=true will call set_target_render_fps(0)
+set_vsync :: proc(state: bool) {
+	if state {
+		set_target_render_fps(0)
+		glfw.SwapInterval(1)
+	} else {
+		glfw.SwapInterval(0)
+	}
 }
 
-set_target_fps :: proc(fps: f32) {
+// Sets a target framerate for the render thread to run at.
+// NOTE: If you want to just use the current monitor's fps, 
+// it is better to call set_vsync(true) rather than this method.
+// NOTE: Calling this method will call set_vsync(false)
+set_target_render_fps :: proc(fps: f32) {
+	set_vsync(false)
+
 	target_fps = fps
+}
+
+set_target_update_fps :: proc(fps: f32) {
+	target_fps_update = fps
 }
 
 window_should_close :: proc() -> bool {
@@ -330,7 +358,11 @@ internal_glfw_framebuffer_size_callback :: proc "c" (
 	internal_on_framebuffer_resize(width, height)
 
 	if render_proc != nil {
+		window_wants_render_context = true
+
 		begin_render_frame()
+
+		window_wants_render_context = false
 
 		render_proc()
 
