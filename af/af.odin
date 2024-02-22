@@ -214,6 +214,9 @@ unlock_render_context :: proc() {
 
 render_sleep_nano: i64
 
+// NOTE: This function relinquieshes the render context. If you are running a single threaded loop
+// and you want to exit, you need to break out of the loop before this thing gets called. 
+// i.e something like begin_render_frame(); if !your_code() break; end_render_framme();
 end_render_frame :: proc() {
 	flush()
 	glfw.SwapBuffers(window)
