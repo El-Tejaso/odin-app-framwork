@@ -25,43 +25,31 @@ randf :: proc() -> f32 {
 	return rand.float32()
 }
 
-t: f64 = 0
-fps, current_frames: int
-
-// returns true if we ticked up
-track_fps :: proc(interval: f64) -> bool {
-	t += f64(af.delta_time)
-	if (t > interval) {
-		t = 0
-		fps = int(f64(current_frames) / interval)
-		current_frames = 0
-		return true
-	}
-
-	current_frames += 1
-	return false
-}
 
 line_benchmark_line_amount := 200
 line_benchmark_thickness :: 5
 
 verts_uploaded, indices_uploaded: uint
 
+benchmark_fps_tracker: af.FpsTracker
 draw_benchmark_test :: proc() {
 	rand.set_global_seed(0)
-
-	if (track_fps(1.0)) {
+	if (af.track_fps(&benchmark_fps_tracker, 1, af.delta_time)) {
 		// try to figure out how many lines we need to draw to get 60 fps.
 		// we are assuming there is a linear relationship between 'line_benchmark_line_amount', and the time it takes to draw 1 frame
 
 		// NOTE: this benchmark could be some deterministic fractal pattern, which would make it look a lot cooler.
-		actualToWantedRatio := f64(fps) / 60
+		actualToWantedRatio := benchmark_fps_tracker.last_fps / 60
 		line_benchmark_line_amount = max(
 			1,
 			int(math.ceil(actualToWantedRatio * f64(line_benchmark_line_amount))),
 		)
 
-		af.debug_log("FPS: %v with line_benchmark_line_amount %v", fps, line_benchmark_line_amount)
+		af.debug_log(
+			"FPS: %v with line_benchmark_line_amount %v",
+			benchmark_fps_tracker.last_fps,
+			line_benchmark_line_amount,
+		)
 		af.debug_log("verts uploaded: %d, indices uploaded: %d", verts_uploaded, indices_uploaded)
 	}
 
@@ -230,7 +218,7 @@ draw_arc_test :: proc() {
 
 
 last_mouse_pos: af.Vec2
-draw_keyboard_and_input_test :: proc() {
+update_keyboard_and_input_test :: proc() {
 	pos := af.get_mouse_pos()
 	if (last_mouse_pos.x != pos.x || last_mouse_pos.y != pos.y) {
 		last_mouse_pos = pos
@@ -251,6 +239,8 @@ draw_keyboard_and_input_test :: proc() {
 
 test_texture: ^af.Texture
 test_texture_2: ^af.Texture
+
+t: f64
 
 draw_texture_test :: proc() {
 	t += f64(af.delta_time)
@@ -302,12 +292,29 @@ draw_stencil_test :: proc() {
 camera_mode := 0
 camera_z_input: f32 = -5
 camera_x_input: f32 = 0
-draw_camera_test :: proc() {
-	mouse_pos := af.get_mouse_pos()
-
+update_camera_test :: proc() {
 	if af.key_just_pressed(.Space) {
 		camera_mode = (camera_mode + 1) % 2
 	}
+
+	speed :: 5
+
+	switch {
+	case af.key_is_down(.A):
+		camera_x_input -= af.delta_time_update * speed
+	case af.key_is_down(.D):
+		camera_x_input += af.delta_time_update * speed
+	}
+
+	switch {
+	case af.key_is_down(.S):
+		camera_z_input -= af.delta_time_update * speed
+	case af.key_is_down(.W):
+		camera_z_input += af.delta_time_update * speed
+	}
+}
+
+draw_camera_test :: proc() {
 	// set up camera
 	projection: af.Mat4
 	if camera_mode == 0 {
@@ -336,22 +343,6 @@ draw_camera_test :: proc() {
 	)
 	// af.draw_circle_outline(af.im, 0, 0, 1, 64, 0.1)
 
-	speed :: 5
-
-	switch {
-	case af.key_is_down(.A):
-		camera_x_input -= af.delta_time * speed
-	case af.key_is_down(.D):
-		camera_x_input += af.delta_time * speed
-	}
-
-	switch {
-	case af.key_is_down(.S):
-		camera_z_input -= af.delta_time * speed
-	case af.key_is_down(.W):
-		camera_z_input += af.delta_time * speed
-	}
-
 	// crosshairs at the center for reference
 
 	// crosshairs
@@ -376,6 +367,7 @@ draw_camera_test :: proc() {
 
 }
 
+nothing_proc :: proc() {}
 
 text_test_text_worldwide_1 :: "!#$%&\"()*+,-./ 😎😎😎 💯 0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'昨夜のコンサートは最高でした уилщертхуилоыхнлойк MR Worldwide 😎😎😎 💯 💯 💯 "
 draw_text_test :: proc() {
@@ -406,62 +398,78 @@ draw_text_test :: proc() {
 }
 
 
-RenderingTest :: struct {
-	fn:   proc(),
-	name: string,
-	doc:  string,
+Testcase :: struct {
+	render_fn: proc(),
+	update_fn: proc(),
+	name:      string,
+	doc:       string,
 }
 current_rendering_test := 0
-rendering_tests := [](RenderingTest) {
-	RenderingTest {
+rendering_tests := [](Testcase) {
+	Testcase {
 		draw_text_test,
+		nothing_proc,
 		"",
 		`Does basic text rendering work? Does not test the edge-cases yet`,
 	},
-	RenderingTest {
+	Testcase {
 		draw_benchmark_test,
+		nothing_proc,
 		"draw_benchmark_test",
 		`A test that measures how fast the immediate mode is`,
 	},
-	RenderingTest{draw_framebuffer_test, "draw_framebuffer_test", `Do framebuffers work?`},
-	RenderingTest {
+	Testcase {
+		draw_framebuffer_test,
+		nothing_proc,
+		"draw_framebuffer_test",
+		`Do framebuffers work?`,
+	},
+	Testcase {
 		draw_geometry_and_outlines_test,
+		nothing_proc,
 		"draw_geometry_and_outlines_test",
 		`Do the geometry and outline drawing methods work?`,
 	},
-	RenderingTest{draw_arc_test, "draw_arc_test", `Do arcs draw as expected?`},
-	RenderingTest {
-		draw_keyboard_and_input_test,
-		"draw_keyboard_and_input_test",
+	Testcase{draw_arc_test, nothing_proc, "draw_arc_test", `Do arcs draw as expected?`},
+	Testcase {
+		nothing_proc,
+		update_keyboard_and_input_test,
+		"update_keyboard_and_input_test",
 		`Does keyboard input work?`,
 	},
-	RenderingTest{draw_texture_test, "draw_texture_test", `Does texture loading work?`},
-	RenderingTest{draw_stencil_test, "draw_stencil_test", `Do the stencilling methods work?`},
-	RenderingTest {
+	Testcase{draw_texture_test, nothing_proc, "draw_texture_test", `Does texture loading work?`},
+	Testcase {
+		draw_stencil_test,
+		nothing_proc,
+		"draw_stencil_test",
+		`Do the stencilling methods work?`,
+	},
+	Testcase {
 		draw_camera_test,
+		update_camera_test,
 		"draw_camera_test",
 		`Are the projection matrices which are relative to the current layour rect working as expected? (The center of the red triangle must be exactly over the crosshairs when the mouse is over the crosshairs)`,
 	},
 }
 
-draw_rendering_tests :: proc() -> bool {
+update_rendering_tests :: proc() -> bool {
 	if af.key_just_pressed(af.KeyCode.Escape) {
 		return false
 	}
-
-	af.clear_screen(af.Color{1, 1, 1, 1})
-
 	changed_test := true
+	// NOTE: current_rendering_test must never be set to an out-of-bounds value, because it is being read on a separate thread
 	switch {
 	case af.key_just_pressed(af.KeyCode.Right):
-		current_rendering_test += 1
-		if current_rendering_test >= len(rendering_tests) {
+		if current_rendering_test + 1 >= len(rendering_tests) {
 			current_rendering_test = 0
+		} else {
+			current_rendering_test += 1
 		}
 	case af.key_just_pressed(af.KeyCode.Left):
-		current_rendering_test -= 1
-		if current_rendering_test < 0 {
+		if current_rendering_test - 1 < 0 {
 			current_rendering_test = len(rendering_tests) - 1
+		} else {
+			current_rendering_test -= 1
 		}
 	case:
 		changed_test = false
@@ -470,6 +478,16 @@ draw_rendering_tests :: proc() -> bool {
 	if changed_test {
 		af.debug_log("\nTest [%d] - %s", current_rendering_test, tt.name)
 	}
+
+	tt.update_fn()
+
+	return true
+}
+
+draw_rendering_tests :: proc() {
+	tt := rendering_tests[current_rendering_test]
+
+	af.clear_screen(af.Color{1, 1, 1, 1})
 
 	// draw label
 	af.set_draw_color({0, 0, 0, 1})
@@ -485,7 +503,7 @@ draw_rendering_tests :: proc() -> bool {
 
 	// draw the test
 	af.set_camera_2D(0, 0, 1, 1)
-	tt.fn()
+	tt.render_fn()
 
 	// red outline
 	af.set_layout_rect(test_region, false)
@@ -497,7 +515,27 @@ draw_rendering_tests :: proc() -> bool {
 
 	verts_uploaded, indices_uploaded = af.vertices_uploaded, af.indices_uploaded
 
-	return true
+	render_diagnostics()
+}
+
+render_diagnostics :: proc() {
+	af.set_layout_rect(af.window_rect, false)
+	af.set_draw_params({0, 0, 0, 1})
+	af.draw_font_text(
+		af.im,
+		monospace_font,
+		fmt.tprintf(
+			"r:%.0fhz,%.2f,%d|u%.0fhz,%.2f,%d",
+			af.fps_tracker_render.last_fps,
+			af.fps_tracker_render.timer,
+			af.fps_tracker_render.frames,
+			af.fps_tracker_update.last_fps,
+			af.fps_tracker_update.timer,
+			af.fps_tracker_update.frames,
+		),
+		32,
+		{10, 10},
+	)
 }
 
 // I sometimes have to use this to check if there are problems with the immmediate mode rendering
@@ -521,41 +559,85 @@ get_diagnostic_mesh :: proc() -> ^af.Mesh {
 	return mesh
 }
 
-main :: proc() {
-	if (!af.initialize(800, 600)) {
-		af.debug_log("Could not initialize. rip\n")
-		return
-	}
-	defer af.un_initialize()
+fb_texture: ^af.Texture
+test_image: ^af.Image
 
+init_tests :: proc() {
 	af.set_window_title("Testing the thing")
 	af.maximize_window()
 	af.show_window()
 
 	// init test resources
-	fb_texture := af.new_texture_from_size(1, 1)
-	defer af.free_texture(fb_texture)
+	fb_texture = af.new_texture_from_size(1, 1)
 	fb = af.new_framebuffer(fb_texture)
-	defer af.free_framebuffer(fb)
 	af.resize_framebuffer(fb, 800, 600)
 
-	test_image := af.new_image("./res/settings_icon.png")
-	defer af.free_image(test_image)
+	test_image = af.new_image("./res/settings_icon.png")
 
 	texture_settings := af.DEFAULT_TEXTURE_CONFIG
 
 	texture_settings.filtering = af.TEXTURE_FILTERING_LINEAR
 	test_texture = af.new_texture_from_image(test_image, texture_settings)
-	defer af.free_texture(test_texture)
 
 	texture_settings.filtering = af.TEXTURE_FILTERING_NEAREST
 	test_texture_2 = af.new_texture_from_image(test_image, texture_settings)
-	defer af.free_texture(test_texture_2)
 
 	// texture_grid_size=4 for test purposes to test the font cache evicting
 	monospace_font = af.new_font("./res/SourceCodePro-Regular.ttf", 32, texture_grid_size = 4)
-	defer af.free_font(monospace_font)
-
 	// mesh := GetDiagnosticMevh()
-	af.run_main_loop(draw_rendering_tests)
+}
+
+uninit_tests :: proc() {
+	defer af.un_initialize()
+
+	defer af.free_texture(fb_texture)
+	defer af.free_framebuffer(fb)
+	defer af.free_image(test_image)
+	defer af.free_texture(test_texture)
+	defer af.free_texture(test_texture_2)
+	defer af.free_font(monospace_font)
+}
+
+
+run_all_tests_singlethreaded :: proc() {
+	for af.new_update_frame() {
+		update_rendering_tests()
+
+		af.begin_render_frame()
+		draw_rendering_tests()
+		af.end_render_frame()
+	}
+}
+
+run_all_tests_multithreaded :: proc() {
+	af.set_vsync(true)
+	// af.set_target_render_fps(60)
+
+	render_thread_proc :: proc() {
+		draw_rendering_tests()
+	}
+	rt := af.start_render_thread(render_thread_proc)
+
+	af.target_fps_update = 240
+
+	for af.new_update_frame() {
+		if !update_rendering_tests() {
+			break
+		}
+	}
+
+	af.stop_and_join_render_thread(rt)
+}
+
+main :: proc() {
+	if (!af.initialize(800, 600)) {
+		af.debug_log("Could not initialize. rip\n")
+		return
+	}
+
+	init_tests()
+	defer uninit_tests()
+
+	// run_all_tests_singlethreaded()
+	run_all_tests_multithreaded()
 }
